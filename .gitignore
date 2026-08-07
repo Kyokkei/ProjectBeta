@@ -1,0 +1,22 @@
+# Android build outputs
+build/
+app/build/
+.gradle/
+local.properties
+
+# Kotlin incremental
+.kotlin/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Codex / agent attachments
+.codex-remote-attachments/
+.agents/
+
+# OS
+.DS_Store
+Thumbs.db

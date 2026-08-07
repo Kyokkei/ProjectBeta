@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.Roulete" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#9CFAFF</item>
+        <item name="android:navigationBarColor">#050608</item>
+        <item name="android:statusBarColor">#050608</item>
+    </style>
+</resources>
