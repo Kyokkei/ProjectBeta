@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -1893,26 +1894,48 @@ private fun RouletteMachineCard(betaTokens: Int, onResult: (GamblingResult) -> U
     val rouletteNumbers = listOf(0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26)
 
     GlassCard(tier = 2, shape = RoundedCornerShape(20.dp)) {
-        Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             Column(Modifier.fillMaxWidth()) {
                 Text("Roulette", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
                 Text("Pick the number. Cost $RouletteCostTokens BetaTokens.", color = Muted, fontSize = 13.sp)
             }
             BoxWithConstraints(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
-                val wheelSize = if (maxWidth < 300.dp) maxWidth else 300.dp
+                val wheelSize = (maxWidth * 0.75f).coerceAtMost(240.dp)
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.size(wheelSize)) {
                     RouletteWheel(
                         rotation = rotation.value,
                         numbers = rouletteNumbers,
+                        landedNumber = if (!spinning) lastNumber else null,
                         modifier = Modifier.fillMaxSize(),
                     )
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .size(24.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Gold),
-                    )
+                            .offset(y = 4.dp),
+                    ) {
+                        if (!spinning && lastNumber != null) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .align(Alignment.Center)
+                                    .clip(CircleShape)
+                                    .background(
+                                        Brush.radialGradient(listOf(CyanGlow, Color.Transparent))
+                                    ),
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .align(Alignment.Center)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(if (!spinning && lastNumber != null) Cyan else Gold),
+                        )
+                    }
                 }
             }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
@@ -1922,20 +1945,35 @@ private fun RouletteMachineCard(betaTokens: Int, onResult: (GamblingResult) -> U
                         FilterChip(
                             selected = color in colorBets,
                             onClick = {
-                                colorBets = if (color in colorBets) colorBets - color else colorBets + color
+                                val newColorBets = if (color in colorBets) colorBets - color else colorBets + color
+                                colorBets = newColorBets
+                                if (color != RouletteBetColor.Green && color in newColorBets) {
+                                    numberBets = numberBets - 0
+                                }
                             },
-                            enabled = !spinning,
+                            enabled = !spinning && !(color != RouletteBetColor.Green && numberBets == setOf(0)),
                             label = { Text(color.label) },
                             modifier = Modifier.weight(1f),
                         )
                     }
+                }
+                if (0 in numberBets && RouletteBetColor.Green !in colorBets) {
+                    Text(
+                        "0 is Green only — Red/Black cleared",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Muted.copy(alpha = 0.7f),
+                    )
                 }
                 Text("Bet on number", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 RouletteNumberTable(
                     selectedNumbers = numberBets,
                     enabled = !spinning,
                     onToggle = { number ->
-                        numberBets = if (number in numberBets) numberBets - number else numberBets + number
+                        val newNumberBets = if (number in numberBets) numberBets - number else numberBets + number
+                        numberBets = newNumberBets
+                        if (number == 0 && 0 in newNumberBets) {
+                            colorBets = colorBets - RouletteBetColor.Red - RouletteBetColor.Black
+                        }
                     },
                 )
                 Text(
@@ -2006,8 +2044,36 @@ private fun RouletteNumberTable(
     onToggle: (Int) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
-        (0..36).toList().chunked(9).forEach { rowNumbers ->
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+        val zeroSelected = 0 in selectedNumbers
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(32.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(
+                    if (zeroSelected) Gold else Color(0xFF159447).copy(alpha = 0.86f)
+                )
+                .border(
+                    width = if (zeroSelected) 2.dp else 1.dp,
+                    color = if (zeroSelected) Color.White else Color.White.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(6.dp),
+                )
+                .clickable(enabled = enabled) { onToggle(0) },
+        ) {
+            Text(
+                text = "0",
+                color = if (zeroSelected) Ink else Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Black,
+            )
+        }
+
+        (1..36).toList().chunked(9).forEach { rowNumbers ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 rowNumbers.forEach { number ->
                     val selected = number in selectedNumbers
                     Box(
@@ -2017,7 +2083,7 @@ private fun RouletteNumberTable(
                             .height(30.dp)
                             .clip(RoundedCornerShape(5.dp))
                             .background(
-                                if (selected) Gold else rouletteNumberColor(number).copy(alpha = 0.86f),
+                                if (selected) Gold else rouletteNumberColor(number).copy(alpha = 0.86f)
                             )
                             .border(
                                 width = if (selected) 2.dp else 1.dp,
@@ -2034,28 +2100,23 @@ private fun RouletteNumberTable(
                         )
                     }
                 }
-                repeat(9 - rowNumbers.size) {
-                    Spacer(modifier = Modifier.weight(1f).height(30.dp))
-                }
             }
         }
     }
 }
 
 @Composable
-private fun RouletteWheel(rotation: Float, numbers: List<Int>, modifier: Modifier = Modifier) {
+private fun RouletteWheel(
+    rotation: Float,
+    numbers: List<Int>,
+    landedNumber: Int? = null,
+    modifier: Modifier = Modifier,
+) {
     Canvas(modifier = modifier) {
         val diameter = min(size.width, size.height)
         val topLeft = androidx.compose.ui.geometry.Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
         val arcSize = androidx.compose.ui.geometry.Size(diameter, diameter)
         val slice = (2f * PI.toFloat()) / numbers.size
-        val textPaint = Paint().apply {
-            color = android.graphics.Color.WHITE
-            textSize = 12.sp.toPx()
-            textAlign = Paint.Align.CENTER
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            isAntiAlias = true
-        }
         drawCircle(Color(0xFF1A1208), radius = diameter / 2f - 1f)
         drawCircle(Gold, radius = diameter / 2f - 1f, style = Stroke(width = 6f))
         drawCircle(Color(0xFF8A6B1F), radius = diameter / 2f - 18f, style = Stroke(width = 2f))
@@ -2084,11 +2145,40 @@ private fun RouletteWheel(rotation: Float, numbers: List<Int>, modifier: Modifie
                 size = arcSize,
                 style = Stroke(width = 0.8f),
             )
+            if (number == landedNumber) {
+                drawArc(
+                    color = Color.White.copy(alpha = 0.30f),
+                    startAngle = Math.toDegrees(startAngleRad.toDouble()).toFloat(),
+                    sweepAngle = Math.toDegrees(slice.toDouble()).toFloat() - 0.4f,
+                    useCenter = true,
+                    topLeft = topLeft,
+                    size = arcSize,
+                )
+                drawArc(
+                    color = Cyan.copy(alpha = 0.90f),
+                    startAngle = Math.toDegrees(startAngleRad.toDouble()).toFloat(),
+                    sweepAngle = Math.toDegrees(slice.toDouble()).toFloat() - 0.4f,
+                    useCenter = true,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = Stroke(width = 3f),
+                )
+            }
 
             val midAngle = startAngleRad + slice / 2f
             val labelRadius = diameter / 2f - 36f
             val lx = center.x + cos(midAngle.toDouble()).toFloat() * labelRadius
             val ly = center.y + sin(midAngle.toDouble()).toFloat() * labelRadius
+            val textPaint = Paint().apply {
+                this.color = android.graphics.Color.WHITE
+                textSize = if (number == landedNumber) 15.sp.toPx() else 12.sp.toPx()
+                textAlign = Paint.Align.CENTER
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                isAntiAlias = true
+                if (number == landedNumber) {
+                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.WHITE)
+                }
+            }
             drawContext.canvas.nativeCanvas.save()
             drawContext.canvas.nativeCanvas.translate(lx, ly)
             drawContext.canvas.nativeCanvas.rotate(Math.toDegrees((midAngle + PI.toFloat() / 2f).toDouble()).toFloat())
