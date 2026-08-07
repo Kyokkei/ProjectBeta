@@ -2,7 +2,6 @@ package com.roulete.chastity
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.Build
@@ -10,7 +9,6 @@ import android.os.Bundle
 import android.util.Base64
 import android.Manifest
 import android.content.pm.PackageManager
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
@@ -135,10 +133,6 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -170,6 +164,48 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
+
+private val DORO_FALLBACK_MODELS = listOf(
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash",
+    "gemini-3.1-flash-lite",
+)
+
+private fun isRetryableHttpError(responseCode: Int, body: String): Boolean {
+    if (responseCode in 500..599) return true
+    if (responseCode != 429) return false
+    return true
+}
+
+private class GeminiHttpException(
+    val responseCode: Int,
+    val responseBody: String,
+) : java.io.IOException("HTTP $responseCode: $responseBody")
+
+private fun callGemini(apiKey: String, model: String, requestBody: JSONObject): String {
+    val url = URL("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey")
+    val connection = (url.openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"
+        connectTimeout = 20_000
+        readTimeout = 45_000
+        doOutput = true
+        setRequestProperty("Content-Type", "application/json")
+    }
+    return try {
+        connection.outputStream.use { it.write(requestBody.toString().toByteArray(Charsets.UTF_8)) }
+        val responseCode = connection.responseCode
+        if (responseCode in 200..299) {
+            connection.inputStream.bufferedReader().use { it.readText() }
+        } else {
+            val error = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            throw GeminiHttpException(responseCode, error)
+        }
+    } finally {
+        connection.disconnect()
+    }
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -230,6 +266,7 @@ private enum class MissionValidationStatus {
     Draft,
     Validated,
     Rejected,
+    Failed,
 }
 
 private enum class MissionSource {
@@ -262,7 +299,6 @@ private data class AppState(
     val tutorialComplete: Boolean = false,
     val strictMode: Boolean = false,
     val geminiApiKey: String = "",
-    val geminiModel: String = "gemini-3.1-flash-lite",
     val proofChecksEnabled: Boolean = false,
     val proofCheck: ProofCheck? = null,
     val proofChancePercentPerHour: Int = 8,
@@ -271,11 +307,6 @@ private data class AppState(
     val proofFailurePenaltyMinutes: Int = 0,
     val proofHistory: List<ProofLog> = emptyList(),
     val selectedCase: CaseType = CaseType.Denial,
-    val prejacLockedUntilMillis: Long = 0L,
-    val prejacMediaUri: String? = null,
-    val prejacMediaType: String? = null,
-    val prejacRoundMinutes: Int = 2,
-    val prejacFailures: Int = 0,
 )
 
 private enum class Rarity {
@@ -335,21 +366,19 @@ private enum class Screen(val label: String, val icon: ImageVector) {
     Dashboard("Home", Icons.Filled.Home),
     Tasks("Task", Icons.Filled.TaskAlt),
     Gacha("Gamble", Icons.Filled.Casino),
-    PrejacTraining("Prejac", Icons.Filled.HourglassTop),
     History("History", Icons.Filled.History),
     Shop("Shop", Icons.Filled.ShoppingBag),
     CensorVault("Censor Vault", Icons.Filled.Image),
     Settings("Settings", Icons.Filled.Settings),
 }
 
-private val PrimaryScreens = listOf(Screen.Dashboard, Screen.Tasks, Screen.Gacha, Screen.PrejacTraining)
+private val PrimaryScreens = listOf(Screen.Dashboard, Screen.Tasks, Screen.Gacha)
 private val DrawerScreens = listOf(Screen.History, Screen.Shop, Screen.CensorVault, Screen.Settings)
 
 private enum class TutorialTarget {
     Countdown,
     MissionActions,
     GamblingChoices,
-    PrejacControls,
     Menu,
     GeminiSetup,
 }
@@ -381,12 +410,6 @@ private val tutorialPages = listOf(
         body = "Pick a machine from this grid. Every play costs tokens and its result can add or remove lock time.",
         screen = Screen.Gacha,
         target = TutorialTarget.GamblingChoices,
-    ),
-    TutorialPage(
-        title = "Prejac Training",
-        body = "Choose local media and start a timed round here. Misses add time; reaching the hard limit locks this feature for 24 hours.",
-        screen = Screen.PrejacTraining,
-        target = TutorialTarget.PrejacControls,
     ),
     TutorialPage(
         title = "Everything else lives here",
@@ -616,7 +639,6 @@ private fun RouleteApp() {
             val result = runCatching {
                 GeminiMissionClient.validate(
                     apiKey = state.geminiApiKey,
-                    model = state.geminiModel.ifBlank { "gemini-3.1-flash-lite" },
                     tasks = draftTasks,
                 )
             }
@@ -811,7 +833,6 @@ private fun RouleteApp() {
                                         GeminiProofClient.verify(
                                             context = context,
                                             apiKey = state.geminiApiKey,
-                                            model = state.geminiModel.ifBlank { "gemini-3.1-flash-lite" },
                                             code = proof.code,
                                             bitmap = bitmap,
                                         )
@@ -880,33 +901,13 @@ private fun RouleteApp() {
                             onTourTargetBounds = { target, bounds -> tutorialBounds[target] = bounds },
                         )
 
-                        Screen.PrejacTraining -> PrejacTrainingScreen(
-                            state = state,
-                            onMediaSelected = { uri, type ->
-                                state = state.copy(prejacMediaUri = uri.toString(), prejacMediaType = type)
-                            },
-                            onRoundState = { round, failures ->
-                                state = state.copy(prejacRoundMinutes = round, prejacFailures = failures)
-                            },
-                            onPenalty = { minutes, label ->
-                                state = state.adjustTime(minutes, "Prejac Training", label)
-                            },
-                            onHardFail = {
-                                state = state
-                                    .copy(prejacLockedUntilMillis = System.currentTimeMillis() + 24.hours)
-                                    .adjustTime(1.daysMinutes, "Prejac Training", "+1d hard fail")
-                            },
-                            onTourTargetBounds = { target, bounds -> tutorialBounds[target] = bounds },
-                        )
-
                         Screen.Settings -> SettingsScreen(
                             state = state,
                             strictActive = strictActive,
                             tourActive = !state.tutorialComplete && tutorialPages[tutorialStep].target == TutorialTarget.GeminiSetup,
                             onDiscreetMode = { enabled -> state = state.copy(discreetMode = enabled) },
                             onStrictMode = { enabled -> state = state.copy(strictMode = enabled) },
-                            onGeminiApiKey = { value -> state = state.copy(geminiApiKey = value) },
-                            onGeminiModel = { value -> state = state.copy(geminiModel = value) },
+                            onGeminiKey = { value -> state = state.copy(geminiApiKey = value) },
                             onProofChecksEnabled = { enabled -> state = state.copy(proofChecksEnabled = enabled) },
                             onProofChance = { value -> state = state.copy(proofChancePercentPerHour = value) },
                             onProofQuietStart = { value -> state = state.copy(proofQuietStartHour = value) },
@@ -915,7 +916,6 @@ private fun RouleteApp() {
                             onStartProofCheck = { startProofCheck() },
                             onResetDaily = { if (!strictActive) state = state.copy(tasks = state.tasks.map { it.copy(completed = false, rewardClaimedDay = null) }) },
                             onClearHistory = { if (!strictActive) state = state.copy(history = emptyList()) },
-                            onResetPrejac = { state = state.copy(prejacLockedUntilMillis = 0L) },
                             onResetLock = { state = state.resetLock() },
                             onReplayTutorial = { state = state.copy(tutorialComplete = false) },
                             onTourTargetBounds = { target, bounds -> tutorialBounds[target] = bounds },
@@ -928,7 +928,7 @@ private fun RouleteApp() {
                         Screen.CensorVault -> PlaceholderScreen(
                             title = "Censor Vault",
                             subtitle = "Local image censor tools land here next.",
-                            body = "Import images, add black bars or pixel blocks, then feed the censored version into Prejac Training.",
+                             body = "Import images, add black bars, pixel blocks, or other local censor effects.",
                         )
                             }
                         }
@@ -1445,7 +1445,9 @@ private fun TasksScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val reduceMotion = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == 0
     val visibleTasks = state.tasks.filter {
-        !it.completed || it.id in completingIds || it.validationStatus == MissionValidationStatus.Rejected
+        !it.completed || it.id in completingIds ||
+            it.validationStatus == MissionValidationStatus.Rejected ||
+            it.validationStatus == MissionValidationStatus.Failed
     }
     val rejectedCount = state.tasks.count { it.validationStatus == MissionValidationStatus.Rejected }
 
@@ -1510,6 +1512,7 @@ private fun TasksScreen(
         } else {
             items(visibleTasks, key = { it.id }) { task ->
                 val completing = task.id in completingIds
+                val failed = task.validationStatus == MissionValidationStatus.Failed
                 val scale = remember(task.id) { Animatable(1f) }
                 LaunchedEffect(task.completed) {
                     if (reduceMotion) {
@@ -1529,6 +1532,8 @@ private fun TasksScreen(
                             scaleY = scale.value
                         },
                     tier = 1,
+                    backgroundColor = if (failed) CoralDim.copy(alpha = 0.10f) else null,
+                    borderBrush = if (failed) Brush.linearGradient(listOf(CoralDim, CoralDim)) else null,
                 ) {
                     Row(
                         modifier = Modifier
@@ -1543,6 +1548,7 @@ private fun TasksScreen(
                                     when (task.validationStatus) {
                                         MissionValidationStatus.Validated -> Mint
                                         MissionValidationStatus.Rejected -> Coral
+                                        MissionValidationStatus.Failed -> Coral
                                         else -> Color.Transparent
                                     }
                                 ),
@@ -1576,8 +1582,15 @@ private fun TasksScreen(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     textDecoration = if (completing) TextDecoration.LineThrough else null,
-                                    color = if (completing) Muted else Color.White,
-                                )
+                                     color = if (completing) Muted else Color.White,
+                                 )
+                                if (failed) {
+                                    Text(
+                                        "✕ Failed yesterday",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Coral,
+                                    )
+                                }
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -1585,7 +1598,17 @@ private fun TasksScreen(
                                     task.difficulty?.let { difficulty ->
                                         DifficultyChip(difficulty)
                                     }
-                                    Text("🪙 ${task.rewardTokens}", color = Gold, fontSize = 13.sp)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        Image(
+                                            painter = painterResource(id = R.drawable.betacoin),
+                                            contentDescription = "BetaCoin",
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                        Text("${task.rewardTokens}", color = Gold, fontSize = 13.sp)
+                                    }
                                 }
                                 task.validationReason?.let {
                                     Text(it, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1798,7 +1821,19 @@ private fun CaseMachineCard(
                 ) {
                     Icon(Icons.Filled.Lock, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (opening) "Opening..." else "Open Case — $CaseCostTokens 🪙")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(if (opening) "Opening..." else "Open Case — $CaseCostTokens")
+                        if (!opening) {
+                            Image(
+                                painter = painterResource(id = R.drawable.betacoin),
+                                contentDescription = "BetaCoin",
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
                 }
                 AnimatedVisibility(opening) {
                     OutlinedButton(onClick = onSkip) {
@@ -2304,311 +2339,6 @@ private fun LockDropBoard(slots: List<DropSlot>, progress: Float, targetSlot: In
 }
 
 @Composable
-private fun PrejacTrainingScreen(
-    state: AppState,
-    onMediaSelected: (Uri, String) -> Unit,
-    onRoundState: (Int, Int) -> Unit,
-    onPenalty: (Int, String) -> Unit,
-    onHardFail: () -> Unit,
-    onTourTargetBounds: (TutorialTarget, Rect) -> Unit,
-) {
-    var active by remember { mutableStateOf(false) }
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var roundMinutes by remember(state.prejacRoundMinutes) { mutableStateOf(state.prejacRoundMinutes.coerceIn(1, 60)) }
-    var remainingSeconds by remember { mutableStateOf(0) }
-    var failures by remember(state.prejacFailures) { mutableStateOf(state.prejacFailures) }
-    var mediaUri by remember(state.prejacMediaUri) { mutableStateOf(state.prejacMediaUri?.let(Uri::parse)) }
-    var mediaType by remember(state.prejacMediaType) { mutableStateOf(state.prejacMediaType) }
-    var imageBitmap by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
-    var resultModal by remember { mutableStateOf<String?>(null) }
-    var showDurationDialog by remember { mutableStateOf(false) }
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val maxRoundMinutes = 10
-    val lockRemainingMillis = max(0L, state.prejacLockedUntilMillis - now)
-    val locked = lockRemainingMillis > 0L
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            now = System.currentTimeMillis()
-            delay(1_000)
-        }
-    }
-
-    fun hardFail() {
-        active = false
-        remainingSeconds = 0
-        resultModal = "denied"
-        onHardFail()
-    }
-    val mediaPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null && !active) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            val type = context.contentResolver.getType(uri).orEmpty()
-            mediaUri = uri
-            mediaType = type
-            onMediaSelected(uri, type)
-            imageBitmap = if (type.startsWith("image/")) {
-                runCatching {
-                    context.contentResolver.openInputStream(uri)?.use { stream ->
-                        BitmapFactory.decodeStream(stream)?.asImageBitmap()
-                    }
-                }.getOrNull()
-            } else {
-                null
-            }
-        }
-    }
-
-    LaunchedEffect(mediaUri, mediaType) {
-        imageBitmap = if (mediaUri != null && mediaType?.startsWith("image/") == true) {
-            runCatching {
-                context.contentResolver.openInputStream(mediaUri!!)?.use { stream ->
-                    BitmapFactory.decodeStream(stream)?.asImageBitmap()
-                }
-            }.getOrNull()
-        } else {
-            null
-        }
-    }
-
-    LaunchedEffect(active, roundMinutes) {
-        if (active) {
-            remainingSeconds = minOf(roundMinutes, maxRoundMinutes) * 60
-            while (active && remainingSeconds > 0) {
-                delay(1_000)
-                remainingSeconds -= 1
-            }
-            if (active && remainingSeconds <= 0) {
-                hardFail()
-            }
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Ink),
-    ) {
-        GlassCard(
-            modifier = Modifier.fillMaxSize(),
-            tier = 1,
-            shape = RoundedCornerShape(20.dp),
-        ) {
-            MediaPreview(
-                mediaUri = mediaUri,
-                mediaType = mediaType,
-                imageBitmap = imageBitmap,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.76f), Color.Transparent)))
-                .padding(horizontal = 18.dp, vertical = 14.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Prejac Training", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
-                    Text(
-                        when {
-                            locked -> "Locked out. Denied for ${formatDuration(lockRemainingMillis)}."
-                            active -> "+30m if you miss it | hard fail at 10m"
-                            else -> "Pick media, start round"
-                        },
-                        color = Muted,
-                        fontSize = 13.sp,
-                    )
-                }
-                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    AssistChip(
-                        onClick = { if (!active) showDurationDialog = true },
-                        enabled = !active,
-                        label = { Text("⏱ ${roundMinutes}m") },
-                    )
-                    Text(
-                        text = when {
-                            active -> formatDuration(remainingSeconds * 1_000L)
-                            locked -> formatDuration(lockRemainingMillis)
-                            else -> "${minOf(roundMinutes, maxRoundMinutes)}m"
-                        },
-                        color = Color.White,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 24.sp,
-                    )
-                }
-            }
-        }
-
-        Card(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(horizontal = 12.dp, vertical = 10.dp)
-                .fillMaxWidth()
-                .tutorialTarget(TutorialTarget.PrejacControls, onTourTargetBounds),
-            colors = CardDefaults.cardColors(containerColor = Panel.copy(alpha = 0.72f)),
-            shape = RoundedCornerShape(8.dp),
-        ) {
-            Column(
-                modifier = Modifier.padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    if (active) {
-                        OutlinedButton(
-                            onClick = {
-                                if (roundMinutes >= maxRoundMinutes) {
-                                    hardFail()
-                                } else {
-                                    active = false
-                                    val newFailures = failures + 1
-                                    val newRound = minOf(roundMinutes + 2, maxRoundMinutes)
-                                    failures = newFailures
-                                    roundMinutes = newRound
-                                    onRoundState(newRound, newFailures)
-                                    onPenalty(30, "+30m")
-                                }
-                            },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text("Cumming")
-                        }
-                        Button(
-                            onClick = {
-                                active = false
-                                roundMinutes = 2
-                                remainingSeconds = 0
-                                onRoundState(2, failures)
-                                resultModal = "approved"
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = Ink),
-                        ) {
-                            Text("Cum")
-                        }
-                    } else {
-                        Button(
-                            onClick = { active = true },
-                            enabled = !locked && mediaUri != null,
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = Ink),
-                        ) {
-                            Text("Start")
-                        }
-                        FilledTonalButton(
-                            onClick = { mediaPicker.launch(arrayOf("image/*", "video/*")) },
-                            enabled = !locked,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text(if (mediaUri == null) "Media" else "Media")
-                        }
-                    }
-                }
-                GlassCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    tier = 1,
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text("⚠ Penalties", color = Coral, fontWeight = FontWeight.Bold)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                Text("Fails", color = Muted, fontSize = 12.sp)
-                                Text("$failures", color = Color.White, fontWeight = FontWeight.Bold)
-                            }
-                            VerticalDivider(modifier = Modifier.height(32.dp), color = Divider)
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                Text("Penalty", color = Muted, fontSize = 12.sp)
-                                Text("+30m / miss", color = Color.White, fontWeight = FontWeight.Bold)
-                            }
-                            VerticalDivider(modifier = Modifier.height(32.dp), color = Divider)
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                Text("Cap", color = Muted, fontSize = 12.sp)
-                                Text("10m → +1d", color = Color.White, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        if (locked) {
-                            Text(
-                                "Denied for ${formatDuration(lockRemainingMillis)}. Settings can reset early.",
-                                color = Muted,
-                                fontSize = 12.sp,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        if (locked) {
-            ResultModal(
-                title = "DENIED",
-                body = "Look at that... still couldn't make it?\nPathetic locked clitty failing again.\n+1 day for being such a useless bitch.\nEdge harder next time... or don't. Mommy loves watching you suffer~\n\nPrejac Training unlocks in ${formatDuration(lockRemainingMillis)}.",
-                color = Coral,
-                dismissible = false,
-                onDismiss = {},
-            )
-        }
-
-        if (resultModal == "approved") {
-            ResultModal(
-                title = "CUM APPROVED",
-                body = "Wow, you actually leaked like a desperate little caged whore?\nGood boy... barely.\nYour pathetic ruined orgasm is accepted this time.\nNo extra days... for now.\nBut we both know you'll fail next round like the prejac bitch you are~",
-                color = Cyan,
-                dismissible = true,
-                onDismiss = { resultModal = null },
-            )
-        }
-
-        if (showDurationDialog) {
-            AlertDialog(
-                onDismissRequest = { showDurationDialog = false },
-                title = { Text("Round duration") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("${roundMinutes} minutes", color = Cyan, fontWeight = FontWeight.Bold)
-                        Slider(
-                            value = roundMinutes.toFloat(),
-                            onValueChange = { value ->
-                                val selectedMinutes = value.roundToInt().coerceIn(1, 60)
-                                if (selectedMinutes != roundMinutes) {
-                                    roundMinutes = selectedMinutes
-                                    onRoundState(selectedMinutes, failures)
-                                }
-                            },
-                            valueRange = 1f..60f,
-                            steps = 58,
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showDurationDialog = false }) {
-                        Text("Done")
-                    }
-                },
-            )
-        }
-    }
-}
-
-@Composable
 private fun ResultModal(title: String, body: String, color: Color, dismissible: Boolean, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
@@ -2705,80 +2435,6 @@ private fun GamblingResultModal(
 }
 
 @Composable
-private fun MediaPreview(
-    mediaUri: Uri?,
-    mediaType: String?,
-    imageBitmap: androidx.compose.ui.graphics.ImageBitmap?,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier.background(Color(0xFF080A0F)),
-        contentAlignment = Alignment.Center,
-    ) {
-        when {
-            mediaUri == null -> {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(240.dp),
-                ) {
-                    Icon(
-                        Icons.Filled.HourglassTop,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = Muted.copy(alpha = 0.5f),
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Text("No media selected", style = MaterialTheme.typography.bodyMedium, color = Muted)
-                    Text("Tap Media to add", style = MaterialTheme.typography.bodySmall, color = Muted.copy(alpha = 0.6f))
-                }
-            }
-            mediaType?.startsWith("image/") == true && imageBitmap != null -> {
-                Image(
-                    bitmap = imageBitmap,
-                    contentDescription = "Selected image",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit,
-                )
-            }
-            mediaType?.startsWith("video/") == true -> {
-                VideoPlayer(uri = mediaUri)
-            }
-            else -> Text("Unsupported media type", color = Coral)
-        }
-    }
-}
-
-@Composable
-private fun VideoPlayer(uri: Uri) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val player = remember(uri) {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(uri))
-            repeatMode = ExoPlayer.REPEAT_MODE_ONE
-            prepare()
-            playWhenReady = true
-        }
-    }
-
-    androidx.compose.runtime.DisposableEffect(player) {
-        onDispose { player.release() }
-    }
-
-    AndroidView(
-        factory = { viewContext ->
-            PlayerView(viewContext).apply {
-                this.player = player
-                useController = true
-            }
-        },
-        modifier = Modifier.fillMaxSize(),
-    )
-}
-
-@Composable
 private fun HistoryScreen(history: List<HistoryEntry>) {
     LazyColumn(
         modifier = Modifier
@@ -2863,8 +2519,7 @@ private fun SettingsScreen(
     tourActive: Boolean,
     onDiscreetMode: (Boolean) -> Unit,
     onStrictMode: (Boolean) -> Unit,
-    onGeminiApiKey: (String) -> Unit,
-    onGeminiModel: (String) -> Unit,
+    onGeminiKey: (String) -> Unit,
     onProofChecksEnabled: (Boolean) -> Unit,
     onProofChance: (Int) -> Unit,
     onProofQuietStart: (Int) -> Unit,
@@ -2873,24 +2528,12 @@ private fun SettingsScreen(
     onStartProofCheck: () -> Unit,
     onResetDaily: () -> Unit,
     onClearHistory: () -> Unit,
-    onResetPrejac: () -> Unit,
     onResetLock: () -> Unit,
     onReplayTutorial: () -> Unit,
     onTourTargetBounds: (TutorialTarget, Rect) -> Unit,
 ) {
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var showApiGuide by remember { mutableStateOf(false) }
+    var showApiDialog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
-    val uriHandler = LocalUriHandler.current
-    val prejacRemainingMillis = max(0L, state.prejacLockedUntilMillis - now)
-    val prejacLocked = prejacRemainingMillis > 0L
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            now = System.currentTimeMillis()
-            delay(1_000)
-        }
-    }
 
     LaunchedEffect(tourActive) {
         if (tourActive) {
@@ -2939,34 +2582,19 @@ private fun SettingsScreen(
                     modifier = Modifier.padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    OutlinedTextField(
-                        value = state.geminiApiKey,
-                        onValueChange = onGeminiApiKey,
-                        label = { Text("Gemini API key") },
-                        singleLine = true,
+                    OutlinedButton(
+                        onClick = { showApiDialog = true },
                         modifier = Modifier.fillMaxWidth(),
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        OutlinedButton(
-                            onClick = { showApiGuide = true },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text("Key guide")
-                        }
-                        OutlinedButton(
-                            onClick = { uriHandler.openUri("https://aistudio.google.com/apikey") },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text("AI Studio")
-                        }
+                    ) {
+                        val hasKey = state.geminiApiKey.isNotBlank()
+                        Icon(
+                            if (hasKey) Icons.Filled.CheckCircle else Icons.Filled.Settings,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (hasKey) "Gemini API Key — configured ✓" else "Configure Gemini API Key")
                     }
-                    OutlinedTextField(
-                        value = state.geminiModel.ifBlank { "gemini-3.1-flash-lite" },
-                        onValueChange = onGeminiModel,
-                        label = { Text("Gemini model") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Random proof checks", color = Color.White, fontWeight = FontWeight.Bold)
@@ -3040,21 +2668,6 @@ private fun SettingsScreen(
         }
         item {
             SettingsRow(
-                title = "Prejac lockout",
-                subtitle = if (prejacLocked) {
-                    "Denied for ${formatDuration(prejacRemainingMillis)}, unless reset here."
-                } else {
-                    "No active Prejac lockout."
-                },
-                trailing = {
-                    OutlinedButton(onClick = onResetPrejac, enabled = prejacLocked) {
-                        Text("Reset")
-                    }
-                },
-            )
-        }
-        item {
-            SettingsRow(
                 title = "Cage timer",
                 subtitle = "Reset the chastity lock countdown to unlocked.",
                 trailing = {
@@ -3088,27 +2701,41 @@ private fun SettingsScreen(
         }
     }
 
-    if (showApiGuide) {
+    if (showApiDialog) {
+        var draftKey by remember { mutableStateOf(state.geminiApiKey) }
         AlertDialog(
-            onDismissRequest = { showApiGuide = false },
-            title = { Text("Create a Gemini API key") },
+            onDismissRequest = { showApiDialog = false },
+            title = { Text("Gemini API Key") },
             text = {
-                Image(
-                    painter = painterResource(R.drawable.gemini_api_key_guide),
-                    contentDescription = "Four-step Gemini API key setup guide",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Used for mission validation and proof checks. Stored locally only.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Muted,
+                    )
+                    OutlinedTextField(
+                        value = draftKey,
+                        onValueChange = { draftKey = it },
+                        label = { Text("API Key") },
+                        placeholder = { Text("AIza...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        "Models used (auto): gemini-3.6-flash → 3.5-flash → 3.5-flash-lite → 3.1-flash → 3.1-flash-lite",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Muted.copy(alpha = 0.7f),
+                    )
+                }
             },
             confirmButton = {
-                TextButton(onClick = { uriHandler.openUri("https://aistudio.google.com/apikey") }) {
-                    Text("Open AI Studio")
-                }
+                Button(onClick = {
+                    onGeminiKey(draftKey.trim())
+                    showApiDialog = false
+                }) { Text("Save") }
             },
             dismissButton = {
-                TextButton(onClick = { showApiGuide = false }) {
-                    Text("Close")
-                }
+                TextButton(onClick = { showApiDialog = false }) { Text("Cancel") }
             },
         )
     }
@@ -3295,8 +2922,16 @@ private fun SectionTitle(text: String) {
 
 @Composable
 private fun TaskRow(task: DailyTask, onChecked: (Boolean) -> Unit) {
+    val failed = task.validationStatus == MissionValidationStatus.Failed
     Card(
-        colors = CardDefaults.cardColors(containerColor = Panel),
+        modifier = Modifier.border(
+            width = 1.dp,
+            color = if (failed) CoralDim else Color.Transparent,
+            shape = RoundedCornerShape(8.dp),
+        ),
+        colors = CardDefaults.cardColors(
+            containerColor = if (failed) CoralDim.copy(alpha = 0.10f) else Panel,
+        ),
         shape = RoundedCornerShape(8.dp),
     ) {
         Row(
@@ -3305,6 +2940,12 @@ private fun TaskRow(task: DailyTask, onChecked: (Boolean) -> Unit) {
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(3.dp)
+                    .background(if (failed) Coral else Color.Transparent),
+            )
             Checkbox(
                 checked = task.completed,
                 enabled = task.validationStatus == MissionValidationStatus.Validated,
@@ -3312,6 +2953,13 @@ private fun TaskRow(task: DailyTask, onChecked: (Boolean) -> Unit) {
             )
             Column(Modifier.weight(1f)) {
                 Text(task.title, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (failed) {
+                    Text(
+                        "✕ Failed yesterday",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Coral,
+                    )
+                }
                 Text(taskRewardLine(task), color = taskStatusColor(task), fontSize = 13.sp)
             }
             if (task.completed) {
@@ -3613,6 +3261,8 @@ private fun GlassCard(
     modifier: Modifier = Modifier,
     tier: Int = 1,
     shape: Shape = RoundedCornerShape(20.dp),
+    backgroundColor: Color? = null,
+    borderBrush: Brush? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val bgColor = when (tier) {
@@ -3630,10 +3280,10 @@ private fun GlassCard(
     Box(
         modifier = modifier
             .clip(shape)
-            .background(bgColor.copy(alpha = if (Build.VERSION.SDK_INT >= 31) 0.65f else 0.90f))
+            .background(backgroundColor ?: bgColor.copy(alpha = if (Build.VERSION.SDK_INT >= 31) 0.65f else 0.90f))
             .border(
                 width = 1.dp,
-                brush = Brush.linearGradient(
+                brush = borderBrush ?: Brush.linearGradient(
                     0f to Color.White.copy(alpha = rimAlpha + 0.08f),
                     0.5f to Color.White.copy(alpha = rimAlpha),
                     1f to Color.White.copy(alpha = rimAlpha + 0.04f),
@@ -3656,7 +3306,11 @@ private fun BetaTokenChip(count: Int, modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text("🪙", fontSize = 14.sp)
+            Image(
+                painter = painterResource(id = R.drawable.betacoin),
+                contentDescription = "BetaCoin",
+                modifier = Modifier.size(16.dp),
+            )
             Text(
                 "$count",
                 style = MaterialTheme.typography.labelMedium,
@@ -3773,11 +3427,60 @@ private fun RouleteTheme(content: @Composable () -> Unit) {
 
 private fun AppState.withDailyReset(): AppState {
     val today = todayKey()
-    return if (lastResetDay == today) {
-        this
-    } else {
-        copy(tasks = tasks.map { it.copy(completed = false, rewardClaimedDay = null) }, lastResetDay = today)
+    if (lastResetDay == today) return this
+
+    val incompleteValidated = tasks.count { task ->
+        !task.completed && task.validationStatus == MissionValidationStatus.Validated
     }
+    val penaltyMinutes = incompleteValidated * 10
+
+    val penaltyEntry = if (penaltyMinutes > 0) {
+        HistoryEntry(
+            title = "Midnight penalty",
+            detail = "$incompleteValidated mission${if (incompleteValidated == 1) "" else "s"} " +
+                "missed — +${penaltyMinutes}m added to sentence.",
+            minutesDelta = penaltyMinutes,
+            kind = "penalty",
+        )
+    } else {
+        null
+    }
+
+    val resetTasks = tasks.map { task ->
+        when {
+            task.completed -> task.copy(
+                completed = false,
+                rewardClaimedDay = null,
+                validationStatus = if (task.validationStatus == MissionValidationStatus.Failed) {
+                    MissionValidationStatus.Draft
+                } else {
+                    task.validationStatus
+                },
+            )
+            task.validationStatus == MissionValidationStatus.Validated -> task.copy(
+                completed = false,
+                rewardClaimedDay = null,
+                validationStatus = MissionValidationStatus.Failed,
+            )
+            task.validationStatus == MissionValidationStatus.Failed -> task.copy(
+                completed = false,
+                rewardClaimedDay = null,
+                validationStatus = MissionValidationStatus.Draft,
+            )
+            else -> task.copy(completed = false, rewardClaimedDay = null)
+        }
+    }
+
+    return copy(
+        tasks = resetTasks,
+        lastResetDay = today,
+        lockedUntilMillis = if (penaltyMinutes > 0) {
+            lockedUntilMillis + penaltyMinutes.minutesMillis
+        } else {
+            lockedUntilMillis
+        },
+        history = penaltyEntry?.let { listOf(it) + history } ?: history,
+    )
 }
 
 private fun AppState.addTask(title: String): AppState =
@@ -4257,6 +3960,7 @@ private fun taskRewardLine(task: DailyTask): String =
             "$difficulty - ${task.rewardTokens} BetaTokens"
         }
         MissionValidationStatus.Rejected -> "Rejected - no BetaTokens"
+        MissionValidationStatus.Failed -> "Failed yesterday - +10m penalty"
         MissionValidationStatus.Draft -> "Needs Gemini validation"
     }
 
@@ -4264,6 +3968,7 @@ private fun taskStatusColor(task: DailyTask): Color =
     when (task.validationStatus) {
         MissionValidationStatus.Validated -> Cyan
         MissionValidationStatus.Rejected -> Coral
+        MissionValidationStatus.Failed -> Coral
         MissionValidationStatus.Draft -> Muted
     }
 
@@ -4314,12 +4019,11 @@ private fun formatHoursLabel(hours: Int): String {
     }
 }
 
-private fun todayKey(): String = LocalDate.now().toString()
+private fun todayKey(): String = LocalDate.now(ZoneId.systemDefault()).toString()
 
 private object GeminiMissionClient {
     suspend fun validate(
         apiKey: String,
-        model: String,
         tasks: List<DailyTask>,
     ): List<MissionValidationResult> = withContext(Dispatchers.IO) {
         val taskList = JSONArray().apply {
@@ -4400,23 +4104,19 @@ private object GeminiMissionClient {
                     .put(geminiSafety("HARM_CATEGORY_CIVIC_INTEGRITY"))
             )
 
-        val url = URL("https://generativelanguage.googleapis.com/v1beta/models/${model.ifBlank { "gemini-3.1-flash-lite" }}:generateContent?key=$apiKey")
-        val connection = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 20_000
-            readTimeout = 45_000
-            doOutput = true
-            setRequestProperty("Content-Type", "application/json")
+        var lastException: Exception? = null
+        for (model in DORO_FALLBACK_MODELS) {
+            try {
+                return@withContext parseMissionValidations(callGemini(apiKey, model, request))
+            } catch (error: GeminiHttpException) {
+                if (isRetryableHttpError(error.responseCode, error.responseBody)) {
+                    lastException = error
+                    continue
+                }
+                throw error
+            }
         }
-
-        connection.outputStream.use { it.write(request.toString().toByteArray(Charsets.UTF_8)) }
-        val responseText = if (connection.responseCode in 200..299) {
-            connection.inputStream.bufferedReader().use { it.readText() }
-        } else {
-            val error = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            throw IllegalStateException("HTTP ${connection.responseCode}: $error")
-        }
-        parseMissionValidations(responseText)
+        throw lastException ?: IllegalStateException("All Gemini models exhausted")
     }
 
     private fun parseMissionValidations(responseText: String): List<MissionValidationResult> {
@@ -4455,7 +4155,6 @@ private object GeminiProofClient {
     suspend fun verify(
         context: Context,
         apiKey: String,
-        model: String,
         code: String,
         bitmap: Bitmap,
     ): ProofVerdict = withContext(Dispatchers.IO) {
@@ -4519,23 +4218,19 @@ private object GeminiProofClient {
                     .put(safety("HARM_CATEGORY_CIVIC_INTEGRITY"))
             )
 
-        val url = URL("https://generativelanguage.googleapis.com/v1beta/models/${model.ifBlank { "gemini-3.1-flash-lite" }}:generateContent?key=$apiKey")
-        val connection = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 20_000
-            readTimeout = 45_000
-            doOutput = true
-            setRequestProperty("Content-Type", "application/json")
+        var lastException: Exception? = null
+        for (model in DORO_FALLBACK_MODELS) {
+            try {
+                return@withContext parseVerdict(callGemini(apiKey, model, request))
+            } catch (error: GeminiHttpException) {
+                if (isRetryableHttpError(error.responseCode, error.responseBody)) {
+                    lastException = error
+                    continue
+                }
+                throw error
+            }
         }
-
-        connection.outputStream.use { it.write(request.toString().toByteArray(Charsets.UTF_8)) }
-        val responseText = if (connection.responseCode in 200..299) {
-            connection.inputStream.bufferedReader().use { it.readText() }
-        } else {
-            val error = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            throw IllegalStateException("HTTP ${connection.responseCode}: $error")
-        }
-        parseVerdict(responseText)
+        throw lastException ?: IllegalStateException("All Gemini models exhausted")
     }
 
     private fun safety(category: String): JSONObject =
@@ -4638,7 +4333,6 @@ private object AppStore {
                 ?: prefs.getString(StateKey, null)?.let { legacy ->
                     runCatching { JSONObject(legacy).optString("geminiApiKey", "") }.getOrDefault("")
                 }.orEmpty(),
-            geminiModel = meta.geminiModel.ifBlank { "gemini-3.1-flash-lite" },
             proofChecksEnabled = meta.proofChecksEnabled,
             proofCheck = meta.proofCheckJson?.let(::proofCheckFromJson),
             proofChancePercentPerHour = meta.proofChancePercentPerHour,
@@ -4647,21 +4341,11 @@ private object AppStore {
             proofFailurePenaltyMinutes = meta.proofFailurePenaltyMinutes,
             proofHistory = dao.getProofLogs().map { it.toProofLog() },
             selectedCase = runCatching { CaseType.valueOf(meta.selectedCase) }.getOrDefault(CaseType.Denial),
-            prejacLockedUntilMillis = meta.prejacLockedUntilMillis,
-            prejacMediaUri = meta.prejacMediaUri,
-            prejacMediaType = meta.prejacMediaType,
-            prejacRoundMinutes = meta.prejacRoundMinutes,
-            prejacFailures = meta.prejacFailures,
         )
     }
 
     private fun loadLegacyJson(json: String): Result<AppState> = runCatching {
         val root = JSONObject(json)
-        val legacyPrejacLockUntil = if (root.optBoolean("prejacLocked", false)) {
-            System.currentTimeMillis() + 24.hours
-        } else {
-            0L
-        }
         AppState(
             tasks = root.getJSONArray("tasks").mapObjects { task ->
                 val legacyRewardBoxes = task.optInt("rewardBoxes", 0)
@@ -4709,7 +4393,6 @@ private object AppStore {
             tutorialComplete = root.optBoolean("tutorialComplete", false),
             strictMode = root.optBoolean("strictMode", false),
             geminiApiKey = root.optString("geminiApiKey", ""),
-            geminiModel = root.optString("geminiModel", "gemini-3.1-flash-lite"),
             proofChecksEnabled = root.optBoolean("proofChecksEnabled", false),
             proofChancePercentPerHour = root.optInt("proofChancePercentPerHour", 8).coerceIn(0, 100),
             proofQuietStartHour = root.optInt("proofQuietStartHour", 0).coerceIn(0, 23),
@@ -4729,11 +4412,6 @@ private object AppStore {
                 )
             } ?: emptyList(),
             selectedCase = runCatching { CaseType.valueOf(root.optString("selectedCase", CaseType.Denial.name)) }.getOrDefault(CaseType.Denial),
-            prejacLockedUntilMillis = root.optLong("prejacLockedUntilMillis", legacyPrejacLockUntil),
-            prejacMediaUri = root.optString("prejacMediaUri").ifBlank { null },
-            prejacMediaType = root.optString("prejacMediaType").ifBlank { null },
-            prejacRoundMinutes = root.optInt("prejacRoundMinutes", 2).coerceIn(2, 10),
-            prejacFailures = root.optInt("prejacFailures", 0),
             proofCheck = root.optJSONObject("proofCheck")?.let { proof ->
                 ProofCheck(
                     code = proof.getString("code"),
@@ -4749,26 +4427,27 @@ private object AppStore {
 
 private fun AppState.toMetaEntity(): AppMetaEntity =
     AppMetaEntity(
-        lockedUntilMillis = lockedUntilMillis,
-        betaTokens = betaTokens,
-        discreetMode = discreetMode,
-        lastResetDay = lastResetDay,
-        onboardingComplete = onboardingComplete,
-        tutorialComplete = tutorialComplete,
-        strictMode = strictMode,
-        geminiModel = geminiModel.ifBlank { "gemini-3.1-flash-lite" },
-        proofChecksEnabled = proofChecksEnabled,
-        proofCheckJson = proofCheck?.toJsonString(),
-        proofChancePercentPerHour = proofChancePercentPerHour.coerceIn(0, 100),
-        proofQuietStartHour = proofQuietStartHour.coerceIn(0, 23),
-        proofQuietEndHour = proofQuietEndHour.coerceIn(0, 23),
-        proofFailurePenaltyMinutes = proofFailurePenaltyMinutes,
-        selectedCase = selectedCase.name,
-        prejacLockedUntilMillis = prejacLockedUntilMillis,
-        prejacMediaUri = prejacMediaUri,
-        prejacMediaType = prejacMediaType,
-        prejacRoundMinutes = prejacRoundMinutes.coerceIn(2, 10),
-        prejacFailures = prejacFailures,
+        "state",
+        lockedUntilMillis,
+        betaTokens,
+        discreetMode,
+        lastResetDay,
+        onboardingComplete,
+        tutorialComplete,
+        strictMode,
+        "",
+        proofChecksEnabled,
+        proofCheck?.toJsonString(),
+        proofChancePercentPerHour.coerceIn(0, 100),
+        proofQuietStartHour.coerceIn(0, 23),
+        proofQuietEndHour.coerceIn(0, 23),
+        proofFailurePenaltyMinutes,
+        selectedCase.name,
+        0L,
+        null,
+        null,
+        2,
+        0,
     )
 
 private fun DailyTask.toEntity(): MissionEntity =
