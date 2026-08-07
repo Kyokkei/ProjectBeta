@@ -15,7 +15,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -73,6 +77,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -82,15 +87,20 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.rememberDrawerState
@@ -106,6 +116,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.layout.ContentScale
@@ -129,11 +140,14 @@ import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.lazy.LazyRow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -466,6 +480,7 @@ private const val WinningPrizeIndex = 52
 @OptIn(ExperimentalMaterial3Api::class)
 private fun RouleteApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val reduceMotion = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == 0
     var state by remember { mutableStateOf(AppStore.load(context).withDailyReset()) }
     var selected by remember { mutableStateOf(Screen.Dashboard) }
     val scope = rememberCoroutineScope()
@@ -702,7 +717,6 @@ private fun RouleteApp() {
                         title = {
                             Column {
                                 Text(if (state.discreetMode) "Private Timer" else "betalocker", fontWeight = FontWeight.Black)
-                                Text("${state.betaTokens} BetaTokens", color = Muted, fontSize = 12.sp)
                             }
                         },
                         navigationIcon = {
@@ -715,10 +729,21 @@ private fun RouleteApp() {
                                 Icon(Icons.Filled.Menu, contentDescription = "Menu")
                             }
                         },
+                        actions = {
+                            BetaTokenChip(count = state.betaTokens, modifier = Modifier.padding(end = 12.dp))
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Surface2.copy(alpha = 0.90f),
+                            titleContentColor = Color.White,
+                            navigationIconContentColor = Color.White,
+                        ),
                     )
                 },
                 bottomBar = {
-                    NavigationBar(containerColor = Ink.copy(alpha = 0.98f)) {
+                    NavigationBar(
+                        containerColor = Surface2.copy(alpha = 0.88f),
+                        modifier = Modifier.clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
+                    ) {
                         PrimaryScreens.forEach { screen ->
                             val navAllowed = !opening && (!rejectedMissionBlock || screen == Screen.Tasks)
                             NavigationBarItem(
@@ -727,6 +752,13 @@ private fun RouleteApp() {
                                 enabled = navAllowed || selected == screen,
                                 icon = { Icon(screen.icon, contentDescription = screen.label) },
                                 label = { Text(screen.label, maxLines = 1, fontSize = 11.sp) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = Cyan,
+                                    selectedTextColor = Cyan,
+                                    indicatorColor = CyanDim,
+                                    unselectedIconColor = Muted,
+                                    unselectedTextColor = Muted,
+                                ),
                             )
                         }
                     }
@@ -745,7 +777,19 @@ private fun RouleteApp() {
                                 Brush.verticalGradient(listOf(Ink, PanelAlt, Color(0xFF050608)))
                             )
                     ) {
-                        when (selected) {
+                        AnimatedContent(
+                            targetState = selected,
+                            transitionSpec = {
+                                if (reduceMotion) {
+                                    fadeIn(tween(0)) togetherWith fadeOut(tween(0))
+                                } else {
+                                    fadeIn(tween(180)) togetherWith fadeOut(tween(180))
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                            label = "screen-transition",
+                        ) { screen ->
+                            when (screen) {
                         Screen.Dashboard -> DashboardScreen(
                             state = state,
                             proofBusy = proofBusy,
@@ -886,8 +930,9 @@ private fun RouleteApp() {
                             subtitle = "Local image censor tools land here next.",
                             body = "Import images, add black bars or pixel blocks, then feed the censored version into Prejac Training.",
                         )
-                    }
-                    pendingGambleResult?.let { result ->
+                            }
+                        }
+                        pendingGambleResult?.let { result ->
                         GamblingResultModal(
                             result = result,
                             attempt = doubleAttempt,
@@ -930,14 +975,21 @@ private fun AppDrawer(
     navBlocked: Boolean,
     onSelect: (Screen) -> Unit,
 ) {
-    ModalDrawerSheet(drawerContainerColor = Panel, drawerContentColor = Color.White) {
+    ModalDrawerSheet(drawerContainerColor = Surface2, drawerContentColor = Color.White) {
         Column(
             modifier = Modifier
                 .fillMaxHeight()
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text("betalocker", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(10.dp))
+            Text(
+                "betalocker",
+                color = Color.White,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Black,
+                modifier = Modifier.padding(10.dp),
+            )
+            HorizontalDivider(color = Divider)
             Text("Local tools", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp))
             PrimaryScreens.forEach { screen ->
                 NavigationDrawerItem(
@@ -948,16 +1000,29 @@ private fun AppDrawer(
                     badge = if (screen == Screen.Tasks && navBlocked) {
                         { Text("Fix") }
                     } else null,
+                    colors = NavigationDrawerItemDefaults.colors(
+                        selectedContainerColor = CyanDim,
+                        selectedIconColor = Cyan,
+                        selectedTextColor = Cyan,
+                    ),
                 )
             }
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color.White.copy(alpha = 0.12f))
             Text("More", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp))
             DrawerScreens.forEach { screen ->
+                if (screen == Screen.Settings) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = Divider)
+                }
                 NavigationDrawerItem(
                     label = { Text(screen.label, color = if (navBlocked) Muted.copy(alpha = 0.55f) else Color.White) },
                     selected = selected == screen,
                     onClick = { if (!navBlocked) onSelect(screen) },
                     icon = { Icon(screen.icon, contentDescription = null, tint = if (navBlocked) Muted.copy(alpha = 0.55f) else Color.White) },
+                    colors = NavigationDrawerItemDefaults.colors(
+                        selectedContainerColor = CyanDim,
+                        selectedIconColor = Cyan,
+                        selectedTextColor = Cyan,
+                    ),
                 )
             }
             if (navBlocked) {
@@ -1063,7 +1128,7 @@ private fun TutorialOverlay(
                         Text(page.actionLabel)
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(
                         onClick = onBack,
                         enabled = step > 0,
@@ -1233,6 +1298,10 @@ private fun DashboardScreen(
 ) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val reduceMotion = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == 0
+    val isLocked = state.proofCheck != null || state.lockedUntilMillis > now
+    val glowAlpha = remember { Animatable(0.3f) }
+    val tickAlpha = remember { Animatable(1f) }
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
         if (bitmap != null) onVerifyProof(bitmap)
     }
@@ -1240,9 +1309,30 @@ private fun DashboardScreen(
         if (granted) cameraLauncher.launch(null)
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(isLocked, reduceMotion) {
+        if (reduceMotion) {
+            glowAlpha.snapTo(0.25f)
+        } else if (isLocked) {
+            while (true) {
+                glowAlpha.animateTo(0.75f, tween(1500, easing = FastOutSlowInEasing))
+                glowAlpha.animateTo(0.25f, tween(1500, easing = FastOutSlowInEasing))
+            }
+        } else {
+            glowAlpha.animateTo(0.25f, tween(300))
+        }
+    }
+
+    LaunchedEffect(reduceMotion) {
         while (true) {
             now = System.currentTimeMillis()
+            if (reduceMotion) {
+                tickAlpha.snapTo(1f)
+            } else {
+                launch {
+                    tickAlpha.snapTo(0.8f)
+                    tickAlpha.animateTo(1f, tween(120))
+                }
+            }
             delay(1_000)
         }
     }
@@ -1265,6 +1355,8 @@ private fun DashboardScreen(
                 remainingMillis = state.remainingMillis(now),
                 lockedUntilMillis = state.lockedUntilMillis,
                 frozen = state.proofCheck != null,
+                glowAlpha = glowAlpha.value,
+                tickAlpha = tickAlpha.value,
                 modifier = Modifier.tutorialTarget(TutorialTarget.Countdown, onTourTargetBounds),
             )
         }
@@ -1287,13 +1379,27 @@ private fun DashboardScreen(
 
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                StatPill("BetaTokens", state.betaTokens.toString(), Modifier.weight(1f))
-                StatPill("Done", "${state.tasks.count { it.completed }}/${state.tasks.size}", Modifier.weight(1f))
+                GlassCard(modifier = Modifier.weight(1f), tier = 1) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text("BetaTokens", color = Muted, fontSize = 13.sp)
+                        Text(state.betaTokens.toString(), color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                GlassCard(modifier = Modifier.weight(1f), tier = 1) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text("Done", color = Muted, fontSize = 13.sp)
+                        Text("${state.tasks.count { it.completed }}/${state.tasks.size}", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
 
         item {
-            SectionTitle("Today")
+            Text(
+                "Today's Missions",
+                style = MaterialTheme.typography.headlineSmall,
+                color = Color.White,
+            )
         }
 
         val dashboardTasks = state.tasks.filter { !it.completed }.take(4)
@@ -1336,6 +1442,8 @@ private fun TasksScreen(
     var showAdd by remember { mutableStateOf(false) }
     var completingIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val reduceMotion = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == 0
     val visibleTasks = state.tasks.filter {
         !it.completed || it.id in completingIds || it.validationStatus == MissionValidationStatus.Rejected
     }
@@ -1348,33 +1456,44 @@ private fun TasksScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Header("Tasks", "Validate missions, earn BetaTokens, gamble badly.")
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    "Tasks",
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = Color.White,
+                )
+                Text(
+                    "Validate missions, earn BetaTokens, gamble badly.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Muted,
+                )
+            }
             Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .tutorialTarget(TutorialTarget.MissionActions, onTourTargetBounds),
             ) {
-                Button(
+                FilledTonalButton(
                     onClick = { showAdd = true },
                     enabled = !strictActive,
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = Ink),
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Add")
                 }
-                OutlinedButton(
+                Button(
                     onClick = onValidateMissions,
                     enabled = !validationBusy && state.tasks.isNotEmpty(),
                     modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = Ink),
                 ) {
                     Text(if (validationBusy) "Checking..." else "Validate")
                 }
             }
             validationStatus?.let {
-                Text(it, color = Muted, fontSize = 13.sp)
+                StatusBanner(message = it, isLoading = validationBusy)
             }
             if (rejectedCount > 0) {
                 Text(
@@ -1391,51 +1510,93 @@ private fun TasksScreen(
         } else {
             items(visibleTasks, key = { it.id }) { task ->
                 val completing = task.id in completingIds
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Panel),
-                    shape = RoundedCornerShape(8.dp),
+                val scale = remember(task.id) { Animatable(1f) }
+                LaunchedEffect(task.completed) {
+                    if (reduceMotion) {
+                        scale.snapTo(1f)
+                    } else if (task.completed) {
+                        scale.animateTo(1.04f, tween(100))
+                        scale.animateTo(1f, tween(100))
+                    } else {
+                        scale.snapTo(1f)
+                    }
+                }
+                GlassCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            scaleX = scale.value
+                            scaleY = scale.value
+                        },
+                    tier = 1,
                 ) {
                     Row(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
+                            .fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Checkbox(
-                            checked = (task.validationStatus == MissionValidationStatus.Validated && task.completed) || completing,
-                            enabled = task.validationStatus == MissionValidationStatus.Validated && !completing,
-                            onCheckedChange = { checked ->
-                                if (checked) {
-                                    completingIds = completingIds + task.id
-                                    scope.launch {
-                                        delay(620)
-                                        onTaskChecked(task, true)
-                                        completingIds = completingIds - task.id
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .width(3.dp)
+                                .background(
+                                    when (task.validationStatus) {
+                                        MissionValidationStatus.Validated -> Mint
+                                        MissionValidationStatus.Rejected -> Coral
+                                        else -> Color.Transparent
                                     }
-                                } else {
-                                    onTaskChecked(task, false)
-                                }
-                            },
+                                ),
                         )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                task.title,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                textDecoration = if (completing) TextDecoration.LineThrough else null,
-                                color = if (completing) Muted else Color.White,
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(
+                                checked = (task.validationStatus == MissionValidationStatus.Validated && task.completed) || completing,
+                                enabled = task.validationStatus == MissionValidationStatus.Validated && !completing,
+                                onCheckedChange = { checked ->
+                                    if (checked) {
+                                        completingIds = completingIds + task.id
+                                        scope.launch {
+                                            delay(620)
+                                            onTaskChecked(task, true)
+                                            completingIds = completingIds - task.id
+                                        }
+                                    } else {
+                                        onTaskChecked(task, false)
+                                    }
+                                },
                             )
-                            Text(taskRewardLine(task), color = taskStatusColor(task), fontSize = 13.sp)
-                            task.validationReason?.let {
-                                Text(it, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    task.title,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    textDecoration = if (completing) TextDecoration.LineThrough else null,
+                                    color = if (completing) Muted else Color.White,
+                                )
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    task.difficulty?.let { difficulty ->
+                                        DifficultyChip(difficulty)
+                                    }
+                                    Text("🪙 ${task.rewardTokens}", color = Gold, fontSize = 13.sp)
+                                }
+                                task.validationReason?.let {
+                                    Text(it, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
                             }
-                        }
-                        IconButton(onClick = { editorTask = task }, enabled = !strictActive) {
-                            Icon(Icons.Filled.Edit, contentDescription = "Edit")
-                        }
-                        IconButton(onClick = { onDelete(task) }, enabled = !strictActive) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Coral)
+                            IconButton(onClick = { editorTask = task }, enabled = !strictActive) {
+                                Icon(Icons.Filled.Edit, contentDescription = "Edit")
+                            }
+                            IconButton(onClick = { onDelete(task) }, enabled = !strictActive) {
+                                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Coral)
+                            }
                         }
                     }
                 }
@@ -1484,6 +1645,7 @@ private fun GamblingScreen(
 ) {
     val prizes = state.casePrizes()
     var machine by remember { mutableStateOf(GamblingMachine.Case) }
+    var oddsExpanded by remember { mutableStateOf(false) }
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -1495,25 +1657,22 @@ private fun GamblingScreen(
         }
 
         item {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.tutorialTarget(TutorialTarget.GamblingChoices, onTourTargetBounds),
             ) {
-                GamblingMachine.entries.chunked(2).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                        row.forEach { option ->
-                            MachineTile(
-                                machine = option,
-                                selected = machine == option,
-                                enabled = !opening,
-                                onClick = { machine = option },
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                        if (row.size == 1) {
-                            Spacer(Modifier.weight(1f))
-                        }
-                    }
+                items(GamblingMachine.entries.toList()) { option ->
+                    FilterChip(
+                        selected = machine == option,
+                        onClick = { machine = option },
+                        enabled = !opening,
+                        label = { Text(option.title) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = CyanDim,
+                            selectedLabelColor = Cyan,
+                        ),
+                    )
                 }
             }
         }
@@ -1535,10 +1694,29 @@ private fun GamblingScreen(
                     )
                 }
                 item {
-                    SectionTitle("Odds")
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        prizes.forEach { prize ->
-                            PrizeOddsRow(prize, prizes)
+                    Column {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { oddsExpanded = !oddsExpanded }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "Odds",
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = Color.White,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(if (oddsExpanded) "Odds ▴" else "Odds ▾", color = Muted)
+                        }
+                        AnimatedVisibility(visible = oddsExpanded) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                prizes.forEach { prize ->
+                                    PrizeOddsRow(prize, prizes)
+                                }
+                            }
                         }
                     }
                 }
@@ -1569,9 +1747,9 @@ private fun CaseMachineCard(
     onSkip: () -> Unit,
     onCaseSelected: (CaseType) -> Unit,
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Panel),
-        shape = RoundedCornerShape(8.dp),
+    GlassCard(
+        tier = 2,
+        shape = RoundedCornerShape(20.dp),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -1592,6 +1770,10 @@ private fun CaseMachineCard(
                         onClick = { onCaseSelected(case) },
                         enabled = !opening,
                         label = { Text(case.title.removeSuffix(" Case")) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = CyanDim,
+                            selectedLabelColor = Cyan,
+                        ),
                     )
                 }
             }
@@ -1602,15 +1784,21 @@ private fun CaseMachineCard(
                 skipToken = skipToken,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                val insufficientTokens = state.betaTokens < CaseCostTokens
                 Button(
-                    enabled = state.betaTokens >= CaseCostTokens && !opening,
+                    enabled = !insufficientTokens && !opening,
                     onClick = onOpen,
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = Ink),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (insufficientTokens) CoralDim else Cyan,
+                        contentColor = if (insufficientTokens) Color.White else Ink,
+                        disabledContainerColor = if (insufficientTokens) CoralDim else Cyan,
+                        disabledContentColor = if (insufficientTokens) Color.White else Ink,
+                    ),
                 ) {
                     Icon(Icons.Filled.Lock, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (opening) "Opening..." else "Open case")
+                    Text(if (opening) "Opening..." else "Open Case — $CaseCostTokens 🪙")
                 }
                 AnimatedVisibility(opening) {
                     OutlinedButton(onClick = onSkip) {
@@ -1669,7 +1857,7 @@ private fun RouletteMachineCard(betaTokens: Int, onResult: (GamblingResult) -> U
     var numberBets by remember { mutableStateOf(setOf(17)) }
     val rouletteNumbers = listOf(0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26)
 
-    Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(8.dp)) {
+    GlassCard(tier = 2, shape = RoundedCornerShape(20.dp)) {
         Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Column(Modifier.fillMaxWidth()) {
                 Text("Roulette", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
@@ -1906,7 +2094,7 @@ private fun TowerMachineCard(betaTokens: Int, onResult: (GamblingResult) -> Unit
         revealed = emptyMap()
     }
 
-    Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(8.dp)) {
+    GlassCard(tier = 2, shape = RoundedCornerShape(20.dp)) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -2014,7 +2202,7 @@ private fun LockDropMachineCard(betaTokens: Int, onResult: (GamblingResult) -> U
     var targetSlot by remember { mutableStateOf(6) }
     val slots = dropSlots(risk)
 
-    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF231062)), shape = RoundedCornerShape(8.dp)) {
+    GlassCard(tier = 2, shape = RoundedCornerShape(20.dp)) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.fillMaxWidth()) {
                 Text("Lock Drop", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
@@ -2126,13 +2314,14 @@ private fun PrejacTrainingScreen(
 ) {
     var active by remember { mutableStateOf(false) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var roundMinutes by remember(state.prejacRoundMinutes) { mutableStateOf(state.prejacRoundMinutes.coerceIn(2, 10)) }
+    var roundMinutes by remember(state.prejacRoundMinutes) { mutableStateOf(state.prejacRoundMinutes.coerceIn(1, 60)) }
     var remainingSeconds by remember { mutableStateOf(0) }
     var failures by remember(state.prejacFailures) { mutableStateOf(state.prejacFailures) }
     var mediaUri by remember(state.prejacMediaUri) { mutableStateOf(state.prejacMediaUri?.let(Uri::parse)) }
     var mediaType by remember(state.prejacMediaType) { mutableStateOf(state.prejacMediaType) }
     var imageBitmap by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     var resultModal by remember { mutableStateOf<String?>(null) }
+    var showDurationDialog by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val maxRoundMinutes = 10
     val lockRemainingMillis = max(0L, state.prejacLockedUntilMillis - now)
@@ -2202,12 +2391,18 @@ private fun PrejacTrainingScreen(
             .fillMaxSize()
             .background(Ink),
     ) {
-        MediaPreview(
-            mediaUri = mediaUri,
-            mediaType = mediaType,
-            imageBitmap = imageBitmap,
+        GlassCard(
             modifier = Modifier.fillMaxSize(),
-        )
+            tier = 1,
+            shape = RoundedCornerShape(20.dp),
+        ) {
+            MediaPreview(
+                mediaUri = mediaUri,
+                mediaType = mediaType,
+                imageBitmap = imageBitmap,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
 
         Box(
             modifier = Modifier
@@ -2229,16 +2424,23 @@ private fun PrejacTrainingScreen(
                         fontSize = 13.sp,
                     )
                 }
-                Text(
-                    text = when {
-                        active -> formatDuration(remainingSeconds * 1_000L)
-                        locked -> formatDuration(lockRemainingMillis)
-                        else -> "${minOf(roundMinutes, maxRoundMinutes)}m"
-                    },
-                    color = Color.White,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 24.sp,
-                )
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    AssistChip(
+                        onClick = { if (!active) showDurationDialog = true },
+                        enabled = !active,
+                        label = { Text("⏱ ${roundMinutes}m") },
+                    )
+                    Text(
+                        text = when {
+                            active -> formatDuration(remainingSeconds * 1_000L)
+                            locked -> formatDuration(lockRemainingMillis)
+                            else -> "${minOf(roundMinutes, maxRoundMinutes)}m"
+                        },
+                        color = Color.White,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 24.sp,
+                    )
+                }
             }
         }
 
@@ -2255,7 +2457,7 @@ private fun PrejacTrainingScreen(
                 modifier = Modifier.padding(10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     if (active) {
                         OutlinedButton(
                             onClick = {
@@ -2297,7 +2499,7 @@ private fun PrejacTrainingScreen(
                         ) {
                             Text("Start")
                         }
-                        OutlinedButton(
+                        FilledTonalButton(
                             onClick = { mediaPicker.launch(arrayOf("image/*", "video/*")) },
                             enabled = !locked,
                             modifier = Modifier.weight(1f),
@@ -2306,12 +2508,52 @@ private fun PrejacTrainingScreen(
                         }
                     }
                 }
-                Text(
-                    if (locked) "Denied for ${formatDuration(lockRemainingMillis)}. Settings can reset early."
-                    else "Fails: $failures | +30m each miss | caps at 10m, then +1d",
-                    color = Muted,
-                    fontSize = 12.sp,
-                )
+                GlassCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    tier = 1,
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text("⚠ Penalties", color = Coral, fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text("Fails", color = Muted, fontSize = 12.sp)
+                                Text("$failures", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                            VerticalDivider(modifier = Modifier.height(32.dp), color = Divider)
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text("Penalty", color = Muted, fontSize = 12.sp)
+                                Text("+30m / miss", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                            VerticalDivider(modifier = Modifier.height(32.dp), color = Divider)
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text("Cap", color = Muted, fontSize = 12.sp)
+                                Text("10m → +1d", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        if (locked) {
+                            Text(
+                                "Denied for ${formatDuration(lockRemainingMillis)}. Settings can reset early.",
+                                color = Muted,
+                                fontSize = 12.sp,
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -2332,6 +2574,35 @@ private fun PrejacTrainingScreen(
                 color = Cyan,
                 dismissible = true,
                 onDismiss = { resultModal = null },
+            )
+        }
+
+        if (showDurationDialog) {
+            AlertDialog(
+                onDismissRequest = { showDurationDialog = false },
+                title = { Text("Round duration") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("${roundMinutes} minutes", color = Cyan, fontWeight = FontWeight.Bold)
+                        Slider(
+                            value = roundMinutes.toFloat(),
+                            onValueChange = { value ->
+                                val selectedMinutes = value.roundToInt().coerceIn(1, 60)
+                                if (selectedMinutes != roundMinutes) {
+                                    roundMinutes = selectedMinutes
+                                    onRoundState(selectedMinutes, failures)
+                                }
+                            },
+                            valueRange = 1f..60f,
+                            steps = 58,
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showDurationDialog = false }) {
+                        Text("Done")
+                    }
+                },
             )
         }
     }
@@ -2445,7 +2716,25 @@ private fun MediaPreview(
         contentAlignment = Alignment.Center,
     ) {
         when {
-            mediaUri == null -> Text("No media selected", color = Muted)
+            mediaUri == null -> {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(240.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.HourglassTop,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = Muted.copy(alpha = 0.5f),
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text("No media selected", style = MaterialTheme.typography.bodyMedium, color = Muted)
+                    Text("Tap Media to add", style = MaterialTheme.typography.bodySmall, color = Muted.copy(alpha = 0.6f))
+                }
+            }
             mediaType?.startsWith("image/") == true && imageBitmap != null -> {
                 Image(
                     bitmap = imageBitmap,
@@ -2838,12 +3127,22 @@ private fun CountdownCard(
     remainingMillis: Long,
     lockedUntilMillis: Long,
     frozen: Boolean,
+    glowAlpha: Float = 0.25f,
+    tickAlpha: Float = 1f,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Panel),
-        shape = RoundedCornerShape(8.dp),
-        modifier = modifier.fillMaxWidth(),
+    GlassCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .drawBehind {
+                drawRoundRect(
+                    color = CyanGlow.copy(alpha = glowAlpha),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(20.dp.toPx()),
+                    style = Stroke(width = 8.dp.toPx()),
+                )
+            },
+        tier = 2,
+        shape = RoundedCornerShape(20.dp),
     ) {
         Column(
             modifier = Modifier.padding(18.dp),
@@ -2867,9 +3166,11 @@ private fun CountdownCard(
             }
             Text(
                 text = formatDuration(remainingMillis),
-                color = Color.White,
+                color = Cyan,
                 fontWeight = FontWeight.Black,
-                fontSize = 34.sp,
+                fontSize = 52.sp,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.graphicsLayer { alpha = tickAlpha },
             )
             Text(
                 text = when {
@@ -2878,6 +3179,7 @@ private fun CountdownCard(
                     else -> "Time left before mercy."
                 },
                 color = Muted,
+                fontStyle = if (remainingMillis == 0L && !frozen) FontStyle.Italic else FontStyle.Normal,
             )
         }
     }
@@ -2892,9 +3194,9 @@ private fun ProofCheckCard(
     onCapture: () -> Unit,
 ) {
     val proof = state.proofCheck
-    Card(
-        colors = CardDefaults.cardColors(containerColor = if (proof == null) PanelAlt else Color(0xFF243036)),
-        shape = RoundedCornerShape(8.dp),
+    GlassCard(
+        tier = 1,
+        shape = RoundedCornerShape(20.dp),
     ) {
         Column(
             modifier = Modifier
@@ -2926,12 +3228,14 @@ private fun ProofCheckCard(
             }
 
             if (proof == null) {
-                OutlinedButton(
-                    onClick = onStart,
-                    enabled = state.lockedUntilMillis > System.currentTimeMillis(),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("Start test check")
+                AnimatedVisibility(visible = state.proofChecksEnabled) {
+                    OutlinedButton(
+                        onClick = onStart,
+                        enabled = state.lockedUntilMillis > System.currentTimeMillis(),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Start test check")
+                    }
                 }
             } else {
                 Button(
@@ -3116,8 +3420,18 @@ private fun ReelView(
             horizontalArrangement = Arrangement.spacedBy(tileGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            reel.forEach { prize ->
-                PrizeTile(prize = prize, width = tileWidth)
+            reel.forEachIndexed { index, prize ->
+                val isCenter = index == WinningPrizeIndex
+                Box(
+                    modifier = Modifier.graphicsLayer {
+                        val scale = if (isCenter) 1.0f else 0.85f
+                        scaleX = scale
+                        scaleY = scale
+                        alpha = if (isCenter) 1.0f else 0.6f
+                    }
+                ) {
+                    PrizeTile(prize = prize, width = tileWidth)
+                }
             }
         }
         Box(
