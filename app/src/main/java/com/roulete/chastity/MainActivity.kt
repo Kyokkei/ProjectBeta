@@ -275,7 +275,43 @@ private enum class MissionValidationStatus {
 private enum class MissionSource {
     Template,
     Custom,
+    Daily,
 }
+
+private val DAILY_AUTO_MISSIONS: List<DailyTask> = listOf(
+    DailyTask(
+        id = "daily_health_check",
+        title = "Check cage and ball for any health issues or discomfort",
+        validationStatus = MissionValidationStatus.Validated,
+        difficulty = MissionDifficulty.Easy,
+        rewardTokens = MissionDifficulty.Easy.tokens,
+        missionSource = MissionSource.Daily,
+    ),
+    DailyTask(
+        id = "daily_lock_secure",
+        title = "Confirm the lock is still secure and the key is nowhere near you",
+        validationStatus = MissionValidationStatus.Validated,
+        difficulty = MissionDifficulty.Easy,
+        rewardTokens = MissionDifficulty.Easy.tokens,
+        missionSource = MissionSource.Daily,
+    ),
+    DailyTask(
+        id = "daily_hygiene",
+        title = "Take a bath and clean your clitty properly",
+        validationStatus = MissionValidationStatus.Validated,
+        difficulty = MissionDifficulty.Medium,
+        rewardTokens = MissionDifficulty.Medium.tokens,
+        missionSource = MissionSource.Daily,
+    ),
+    DailyTask(
+        id = "daily_reflection",
+        title = "Spend 5 minutes staring at your flat cage and say out loud that you don't deserve release",
+        validationStatus = MissionValidationStatus.Validated,
+        difficulty = MissionDifficulty.Medium,
+        rewardTokens = MissionDifficulty.Medium.tokens,
+        missionSource = MissionSource.Daily,
+    ),
+)
 
 private enum class MissionDifficulty(val label: String, val tokens: Int) {
     Easy("Easy", 5),
@@ -438,60 +474,60 @@ private fun Modifier.tutorialTarget(
 
 private val prizeTables = mapOf(
     CaseType.Pity to listOf(
-        Prize("Tiny Lecture", "+30 minutes. A soft warning.", 30, Rarity.MilSpec, 1350),
-        Prize("Cute Little Delay", "+1 hour. Practically charity.", 1.hoursMinutes, Rarity.MilSpec, 1250),
-        Prize("Training Wheels", "+2 hours. Stay patient.", 2.hoursMinutes, Rarity.MilSpec, 1050),
-        Prize("Pity Drip", "-30 minutes. Barely counts.", -30, Rarity.MilSpec, 850),
-        Prize("Mercy Crumb", "-1 hour. Do not get brave.", -1.hoursMinutes, Rarity.MilSpec, 560),
-        Prize("Soft Denial", "+4 hours. Still no.", 4.hoursMinutes, Rarity.Restricted, 520),
-        Prize("Good Boy Delay", "+6 hours. Smile through it.", 6.hoursMinutes, Rarity.Restricted, 390),
-        Prize("Leash Loosened", "-3 hours. A small leash slip.", -3.hoursMinutes, Rarity.Restricted, 220),
-        Prize("One-Day Reminder", "+1 day. Lessons need time.", 1.daysMinutes, Rarity.Classified, 120),
-        Prize("Annoying Mercy", "-6 hours. Lucky, not skilled.", -6.hoursMinutes, Rarity.Classified, 85),
-        Prize("Pity Coupon", "-1 day. Do not frame it.", -1.daysMinutes, Rarity.Covert, 20),
-        Prize("Soft Reset Fantasy", "-2 days. Rare enough to hurt.", -2.daysMinutes, Rarity.Gold, 3),
+        Prize("Tiny Lecture for Tiny Dick", "+30 minutes. A soft warning for a tiny problem.", 30, Rarity.MilSpec, 1350),
+        Prize("Cute Little Delay, Still Useless", "+1 hour. Even your luck is unimpressive.", 1.hoursMinutes, Rarity.MilSpec, 1250),
+        Prize("Training Wheels for a Failure", "+2 hours. You still need help staying locked.", 2.hoursMinutes, Rarity.MilSpec, 1050),
+        Prize("Pity Drip, Don’t Get Excited", "-30 minutes. Take the crumb and stop pretending it means freedom.", -30, Rarity.MilSpec, 850),
+        Prize("Mercy Crumb for a Locked Loser", "-1 hour. A consolation prize for losing properly.", -1.hoursMinutes, Rarity.MilSpec, 560),
+        Prize("Soft Denial, Stay Desperate", "+4 hours. Hope is still not getting you out.", 4.hoursMinutes, Rarity.Restricted, 520),
+        Prize("Good Boy Delay (you’re not one)", "+6 hours. Wear the label; you haven’t earned the title.", 6.hoursMinutes, Rarity.Restricted, 390),
+        Prize("Leash Loosened… Barely", "-3 hours. The leash moved; you did not.", -3.hoursMinutes, Rarity.Restricted, 220),
+        Prize("One-Day Reminder You’re Owned", "+1 day. Let the calendar reinforce the ownership.", 1.daysMinutes, Rarity.Classified, 120),
+        Prize("Annoying Mercy, Don’t Thank Me", "-6 hours. Accept the discount without getting grateful.", -6.hoursMinutes, Rarity.Classified, 85),
+        Prize("Pity Coupon for a Cuck", "-1 day. Spend your little coupon and stay embarrassed.", -1.daysMinutes, Rarity.Covert, 20),
+        Prize("Soft Reset Fantasy, Still Caged", "-2 days. Imagine release while the cage stays shut.", -2.daysMinutes, Rarity.Gold, 3),
     ),
     CaseType.Denial to listOf(
-        Prize("Still Tiny", "+2 hours. Cute attempt at freedom.", 2.hoursMinutes, Rarity.MilSpec, 1300),
-        Prize("Denied Again", "+4 hours. The lock says no.", 4.hoursMinutes, Rarity.MilSpec, 1300),
-        Prize("Clitty Timeout", "+6 hours for getting hopeful.", 6.hoursMinutes, Rarity.MilSpec, 1200),
-        Prize("Extinction Day", "+1 day. Back in the drawer.", 1.daysMinutes, Rarity.MilSpec, 1050),
-        Prize("Hands Homework", "Extra 100 Edges. No time mercy.", 0, Rarity.MilSpec, 950),
-        Prize("Pity Drip", "-30 minutes. Barely counts.", -30, Rarity.MilSpec, 650),
-        Prize("Micro Mercy", "-1 hour. Don't get smug.", -1.hoursMinutes, Rarity.MilSpec, 350),
-        Prize("Bedtime Caged", "+12 hours. Sleep locked.", 12.hoursMinutes, Rarity.Restricted, 420),
-        Prize("Two-Day Toy", "+2 days. Very manageable. For me.", 2.daysMinutes, Rarity.Restricted, 360),
-        Prize("Denial Debt", "Double current sentence, capped at +3 days.", Int.MIN_VALUE, Rarity.Restricted, 300),
-        Prize("Cage Vacation", "+3 days. Enjoy the stay.", 3.daysMinutes, Rarity.Restricted, 260),
-        Prize("Leash Loosened", "-3 hours. A small leash slip.", -3.hoursMinutes, Rarity.Restricted, 180),
-        Prize("Calendar Tax", "+5 days. The calendar hates you.", 5.daysMinutes, Rarity.Classified, 95),
-        Prize("A Week Beneath Me", "+7 days. Practice obedience.", 7.daysMinutes, Rarity.Classified, 80),
-        Prize("Look, Drip, Suffer", "No touch and daily check-ins for 2 weeks.", 0, Rarity.Classified, 70),
-        Prize("Mercy Leak", "-12 hours. Annoyingly lucky.", -12.hoursMinutes, Rarity.Classified, 40),
-        Prize("Extinction Spiral", "+14 to +21 days randomized.", Int.MAX_VALUE, Rarity.Covert, 26),
-        Prize("Sentence Breeder", "Current sentence is completely doubled.", Int.MIN_VALUE + 1, Rarity.Covert, 20),
-        Prize("Pity Coupon", "-1 day. Do not frame it.", -1.daysMinutes, Rarity.Covert, 12),
-        Prize("Total Blackout", "+120 Days. Brutal 4-month extinction.", 120.daysMinutes, Rarity.Gold, 25),
-        Prize("Thirty-Minute Accident", "30 Minutes of Freedom. Then back in.", -30, Rarity.Gold, 1),
+        Prize("Still Tiny, Always Will Be", "+2 hours. A little attempt, same little result.", 2.hoursMinutes, Rarity.MilSpec, 1300),
+        Prize("Denied Again, Cry About It", "+4 hours. The lock heard you hope and added time.", 4.hoursMinutes, Rarity.MilSpec, 1300),
+        Prize("Clitty Timeout, Hands Off", "+6 hours. Hands stay away; your frustration can stay close.", 6.hoursMinutes, Rarity.MilSpec, 1200),
+        Prize("Extinction Day, No Release", "+1 day. Put the fantasy back in the drawer.", 1.daysMinutes, Rarity.MilSpec, 1050),
+        Prize("Hands Homework, Edge and Fail", "Extra 100 Edges. Work harder at failing.", 0, Rarity.MilSpec, 950),
+        Prize("Pity Drip, Then Nothing", "-30 minutes. Enjoy the drip; nothing else is coming.", -30, Rarity.MilSpec, 650),
+        Prize("Micro Mercy, Instantly Regretted", "-1 hour. One hour off, immediately regretted. Don’t smile.", -1.hoursMinutes, Rarity.MilSpec, 350),
+        Prize("Bedtime Caged, Dream of Cock", "+12 hours. Sleep locked and dream about what you cannot touch.", 12.hoursMinutes, Rarity.Restricted, 420),
+        Prize("Two-Day Toy, Not Yours", "+2 days. The toy stays out of reach; so does release.", 2.daysMinutes, Rarity.Restricted, 360),
+        Prize("Denial Debt, Keep Paying", "Double current sentence, capped at +3 days. Interest is due immediately.", Int.MIN_VALUE, Rarity.Restricted, 300),
+        Prize("Cage Vacation, No Exit", "+3 days. Check in, settle down, and forget the exit.", 3.daysMinutes, Rarity.Restricted, 260),
+        Prize("Leash Loosened… Then Tightened", "-3 hours. A brief slip, followed by a tighter pull.", -3.hoursMinutes, Rarity.Restricted, 180),
+        Prize("Calendar Tax, Another Week", "+5 days. The calendar takes another week from you.", 5.daysMinutes, Rarity.Classified, 95),
+        Prize("A Week Beneath Me", "+7 days. Spend another week exactly where you belong.", 7.daysMinutes, Rarity.Classified, 80),
+        Prize("Look, Drip, Suffer", "No touch and daily check-ins for 2 weeks. Watch, report, and suffer.", 0, Rarity.Classified, 70),
+        Prize("Mercy Leak, Wasted", "-12 hours. Even your lucky leak feels wasted.", -12.hoursMinutes, Rarity.Classified, 40),
+        Prize("Extinction Spiral, Keep Spinning", "+14 to +21 days randomized. The wheel keeps turning until hope gives up.", Int.MAX_VALUE, Rarity.Covert, 26),
+        Prize("Sentence Breeder, Stay Locked", "Current sentence is completely doubled. Your sentence reproduces; you remain locked.", Int.MIN_VALUE + 1, Rarity.Covert, 20),
+        Prize("Pity Coupon, Expired", "-1 day. The coupon is expired; the tiny mercy is still insulting.", -1.daysMinutes, Rarity.Covert, 12),
+        Prize("Total Blackout, No Hope", "+120 Days. Four months of darkness, with no hope attached.", 120.daysMinutes, Rarity.Gold, 25),
+        Prize("Thirty-Minute Accident, Then Back In", "30 Minutes of Freedom. Enjoy the accident, then get back in.", -30, Rarity.Gold, 1),
     ),
     CaseType.Extinction to listOf(
-        Prize("No Mercy Warmup", "+6 hours. This is the gentle part.", 6.hoursMinutes, Rarity.MilSpec, 1200),
-        Prize("Twelve-Hour Reminder", "+12 hours. Hope was noisy.", 12.hoursMinutes, Rarity.MilSpec, 1150),
-        Prize("One-Day Ownership", "+1 day. Easy math.", 1.daysMinutes, Rarity.MilSpec, 1000),
-        Prize("Two-Day Correction", "+2 days. Try whining quieter.", 2.daysMinutes, Rarity.MilSpec, 850),
-        Prize("Tiny Mercy Error", "-30 minutes. Basically cosmetic.", -30, Rarity.MilSpec, 420),
-        Prize("Weekend Removed", "+3 days. Plans cancelled.", 3.daysMinutes, Rarity.Restricted, 520),
-        Prize("Five-Day Lesson", "+5 days. Learn slowly.", 5.daysMinutes, Rarity.Restricted, 390),
-        Prize("Sentence Debt", "Double current sentence, capped at +3 days.", Int.MIN_VALUE, Rarity.Restricted, 300),
-        Prize("Mercy Leak", "-1 hour. Pathetic little discount.", -1.hoursMinutes, Rarity.Restricted, 130),
-        Prize("A Week Beneath Me", "+7 days. Practice obedience.", 7.daysMinutes, Rarity.Classified, 160),
-        Prize("Two-Week Drain", "+14 days. The lock gets comfortable.", 14.daysMinutes, Rarity.Classified, 90),
-        Prize("Barely Spared", "-3 hours. Do not celebrate.", -3.hoursMinutes, Rarity.Classified, 35),
-        Prize("Extinction Spiral", "+14 to +21 days randomized.", Int.MAX_VALUE, Rarity.Covert, 45),
-        Prize("Sentence Breeder", "Current sentence is completely doubled.", Int.MIN_VALUE + 1, Rarity.Covert, 36),
-        Prize("Pity Coupon", "-1 day. Offensive luck.", -1.daysMinutes, Rarity.Covert, 10),
-        Prize("Total Blackout", "+120 Days. Brutal 4-month extinction.", 120.daysMinutes, Rarity.Gold, 35),
-        Prize("Thirty-Minute Accident", "30 Minutes of Freedom. Then back in.", -30, Rarity.Gold, 1),
+        Prize("No Mercy Warmup", "+6 hours. This is the gentle warmup. It gets worse.", 6.hoursMinutes, Rarity.MilSpec, 1200),
+        Prize("Twelve-Hour Reminder You’re Nothing", "+12 hours. Twelve hours to remember how little your hope matters.", 12.hoursMinutes, Rarity.MilSpec, 1150),
+        Prize("One-Day Ownership, Permanent Mindset", "+1 day. One day of ownership to make the mindset permanent.", 1.daysMinutes, Rarity.MilSpec, 1000),
+        Prize("Two-Day Correction", "+2 days. Two days should correct that optimism.", 2.daysMinutes, Rarity.MilSpec, 850),
+        Prize("Tiny Mercy Error, Fixed", "-30 minutes. A tiny error in mercy, corrected by your continued existence.", -30, Rarity.MilSpec, 420),
+        Prize("Weekend Removed", "+3 days. Your weekend has been removed from the schedule.", 3.daysMinutes, Rarity.Restricted, 520),
+        Prize("Five-Day Lesson in Failure", "+5 days. Five days to study the same lesson: you fail.", 5.daysMinutes, Rarity.Restricted, 390),
+        Prize("Sentence Debt, Compound Interest", "Double current sentence, capped at +3 days. The debt compounds because you do.", Int.MIN_VALUE, Rarity.Restricted, 300),
+        Prize("Mercy Leak, Clean It Up", "-1 hour. Clean up the mercy leak and stop calling it luck.", -1.hoursMinutes, Rarity.Restricted, 130),
+        Prize("A Week Beneath Me", "+7 days. A full week beneath me, exactly as scheduled.", 7.daysMinutes, Rarity.Classified, 160),
+        Prize("Two-Week Drain", "+14 days. Two weeks drained from your life and poured into the lock.", 14.daysMinutes, Rarity.Classified, 90),
+        Prize("Barely Spared, Still Owned", "-3 hours. Barely spared, never released, still owned.", -3.hoursMinutes, Rarity.Classified, 35),
+        Prize("Extinction Spiral", "+14 to +21 days randomized. The spiral has no concern for your plans.", Int.MAX_VALUE, Rarity.Covert, 45),
+        Prize("Sentence Breeder", "Current sentence is completely doubled. The sentence grows; your freedom does not.", Int.MIN_VALUE + 1, Rarity.Covert, 36),
+        Prize("Pity Coupon (worthless)", "-1 day. Worthless luck, briefly less sentence, no dignity returned.", -1.daysMinutes, Rarity.Covert, 10),
+        Prize("Total Blackout", "+120 Days. Four months erased from anything resembling freedom.", 120.daysMinutes, Rarity.Gold, 35),
+        Prize("Thirty-Minute Accident", "30 Minutes of Freedom. A brief administrative error before the cage closes again.", -30, Rarity.Gold, 1),
     ),
 )
 
@@ -855,8 +891,16 @@ private fun RouleteApp() {
                             validationStatus = missionValidationStatus,
                             onValidateMissions = { validateMissions() },
                             onAdd = { title -> if (!strictActive) state = state.addTask(title) },
-                            onEdit = { task, title -> if (!strictActive) state = state.editTask(task, title) },
-                            onDelete = { task -> if (!strictActive) state = state.copy(tasks = state.tasks.filterNot { it.id == task.id }) },
+                            onEdit = { task, title ->
+                                if (!strictActive && task.missionSource != MissionSource.Daily) {
+                                    state = state.editTask(task, title)
+                                }
+                            },
+                            onDelete = { task ->
+                                if (!strictActive && task.missionSource != MissionSource.Daily) {
+                                    state = state.copy(tasks = state.tasks.filterNot { it.id == task.id })
+                                }
+                            },
                             onTaskChecked = { task, checked -> state = state.toggleTask(task, checked) },
                             onTourTargetBounds = { target, bounds -> tutorialBounds[target] = bounds },
                         )
@@ -1573,14 +1617,35 @@ private fun TasksScreen(
                                 },
                             )
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    task.title,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    textDecoration = if (completing) TextDecoration.LineThrough else null,
-                                     color = if (completing) Muted else Color.White,
-                                 )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        task.title,
+                                        modifier = Modifier.weight(1f),
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        textDecoration = if (completing) TextDecoration.LineThrough else null,
+                                        color = if (completing) Muted else Color.White,
+                                    )
+                                    if (task.missionSource == MissionSource.Daily) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = CyanDim,
+                                        ) {
+                                            Text(
+                                                text = "DAILY",
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Cyan,
+                                                fontWeight = FontWeight.Bold,
+                                            )
+                                        }
+                                    }
+                                }
                                 if (failed) {
                                     Text(
                                         "✕ Failed yesterday",
@@ -1611,11 +1676,13 @@ private fun TasksScreen(
                                     Text(it, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                             }
-                            IconButton(onClick = { editorTask = task }, enabled = !strictActive) {
-                                Icon(Icons.Filled.Edit, contentDescription = "Edit")
-                            }
-                            IconButton(onClick = { onDelete(task) }, enabled = !strictActive) {
-                                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Coral)
+                            if (task.missionSource != MissionSource.Daily) {
+                                IconButton(onClick = { editorTask = task }, enabled = !strictActive) {
+                                    Icon(Icons.Filled.Edit, contentDescription = "Edit")
+                                }
+                                IconButton(onClick = { onDelete(task) }, enabled = !strictActive) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Coral)
+                                }
                             }
                         }
                     }
@@ -1908,7 +1975,7 @@ private fun RouletteMachineCard(betaTokens: Int, onResult: (GamblingResult) -> U
         ) {
             Column(Modifier.fillMaxWidth()) {
                 Text("Roulette", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
-                Text("Pick the number. Cost $RouletteCostTokens BetaTokens.", color = Muted, fontSize = 13.sp)
+                Text("Pick color and/or number. Matching bets stack. Cost $RouletteCostTokens BetaTokens.", color = Muted, fontSize = 13.sp)
             }
             BoxWithConstraints(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
                 val wheelSize = maxWidth - 16.dp
@@ -1962,19 +2029,9 @@ private fun RouletteMachineCard(betaTokens: Int, onResult: (GamblingResult) -> U
                         FilterChip(
                             selected = color in colorBets,
                             onClick = {
-                                val nowSelected = color !in colorBets
-                                val newColorBets = if (color in colorBets) colorBets - color else colorBets + color
-                                colorBets = newColorBets
-                                when {
-                                    color == RouletteBetColor.Green && nowSelected -> {
-                                        numberBets = setOf(0)
-                                    }
-                                    color != RouletteBetColor.Green && nowSelected -> {
-                                        numberBets = numberBets - 0
-                                    }
-                                }
+                                colorBets = if (color in colorBets) colorBets - color else colorBets + color
                             },
-                            enabled = !spinning && !(color != RouletteBetColor.Green && numberBets == setOf(0)),
+                            enabled = !spinning,
                             label = { Text(color.label) },
                             modifier = Modifier.weight(1f),
                         )
@@ -1983,29 +2040,9 @@ private fun RouletteMachineCard(betaTokens: Int, onResult: (GamblingResult) -> U
                 Text("Bet on number", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 RouletteNumberTable(
                     selectedNumbers = numberBets,
-                    disabledNumbers = if (RouletteBetColor.Green in colorBets) (1..36).toSet() else emptySet(),
                     enabled = !spinning,
                     onToggle = { number ->
-                        val willBeSelected = number !in numberBets
-                        val newNumberBets = if (number in numberBets) numberBets - number else numberBets + number
-                        if (willBeSelected) {
-                            when {
-                                number == 0 -> {
-                                    numberBets = setOf(0)
-                                    colorBets = setOf(RouletteBetColor.Green)
-                                }
-                                RouletteBetColor.Green in colorBets -> {
-                                    colorBets = colorBets - RouletteBetColor.Green
-                                    numberBets = newNumberBets
-                                }
-                                else -> numberBets = newNumberBets
-                            }
-                        } else {
-                            if (number == 0) {
-                                colorBets = colorBets - RouletteBetColor.Green
-                            }
-                            numberBets = newNumberBets
-                        }
+                        numberBets = if (number in numberBets) numberBets - number else numberBets + number
                     },
                 )
                 Text(
@@ -2090,7 +2127,6 @@ private fun RouletteMachineCard(betaTokens: Int, onResult: (GamblingResult) -> U
 @Composable
 private fun RouletteNumberTable(
     selectedNumbers: Set<Int>,
-    disabledNumbers: Set<Int> = emptySet(),
     enabled: Boolean,
     onToggle: (Int) -> Unit,
 ) {
@@ -2127,7 +2163,6 @@ private fun RouletteNumberTable(
             ) {
                 rowNumbers.forEach { number ->
                     val selected = number in selectedNumbers
-                    val isDisabled = number in disabledNumbers
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
@@ -2137,7 +2172,6 @@ private fun RouletteNumberTable(
                             .background(
                                 when {
                                     selected -> Gold
-                                    isDisabled -> rouletteNumberColor(number).copy(alpha = 0.25f)
                                     else -> rouletteNumberColor(number).copy(alpha = 0.86f)
                                 }
                             )
@@ -2146,7 +2180,7 @@ private fun RouletteNumberTable(
                                 color = if (selected) Color.White else Color.White.copy(alpha = 0.10f),
                                 shape = RoundedCornerShape(5.dp),
                             )
-                            .clickable(enabled = enabled && !isDisabled) { onToggle(number) },
+                            .clickable(enabled = enabled) { onToggle(number) },
                     ) {
                         Text(
                             text = number.toString(),
@@ -3668,9 +3702,15 @@ private fun AppState.withDailyReset(): AppState {
             else -> task.copy(completed = false, rewardClaimedDay = null)
         }
     }
+    val dailyIds = DAILY_AUTO_MISSIONS.map { it.id }.toSet()
+    val userTasks = resetTasks.filterNot { it.id in dailyIds }
+    val freshDailyTasks = DAILY_AUTO_MISSIONS.map { mission ->
+        mission.copy(completed = false, rewardClaimedDay = null)
+    }
+    val allTasks = freshDailyTasks + userTasks
 
     return copy(
-        tasks = resetTasks,
+        tasks = allTasks,
         lastResetDay = today,
         lockedUntilMillis = if (penaltyMinutes > 0) {
             lockedUntilMillis + penaltyMinutes.minutesMillis
@@ -4484,6 +4524,7 @@ private object AppStore {
         context.getSharedPreferences(Prefs, Context.MODE_PRIVATE)
             .edit()
             .putString(GeminiApiKey, state.geminiApiKey)
+            .putString(StateKey, state.toLegacyJson())
             .apply()
 
         val dao = BetalockerDatabase.get(context).dao()
@@ -4558,8 +4599,8 @@ private object AppStore {
                     MissionValidationStatus.Draft
                 }
                 val source = runCatching {
-                    MissionSource.valueOf(task.optString("missionSource"))
-                }.getOrNull() ?: MissionSource.Template
+                    MissionSource.valueOf(task.optString("missionSource", MissionSource.Custom.name))
+                }.getOrDefault(MissionSource.Custom)
                 DailyTask(
                     id = task.getString("id"),
                     title = task.getString("title"),
@@ -4622,6 +4663,75 @@ private object AppStore {
         )
     }
 }
+
+private fun AppState.toLegacyJson(): String = JSONObject().apply {
+    put(
+        "tasks",
+        JSONArray().apply {
+            tasks.forEach { task ->
+                val taskJson = JSONObject()
+                    .put("id", task.id)
+                    .put("title", task.title)
+                    .put("rewardTokens", task.rewardTokens)
+                    .put("completed", task.completed)
+                    .put("validationStatus", task.validationStatus.name)
+                    .put("missionSource", task.missionSource.name)
+                task.rewardClaimedDay?.let { taskJson.put("rewardClaimedDay", it) }
+                task.difficulty?.let { taskJson.put("difficulty", it.name) }
+                task.validationReason?.let { taskJson.put("validationReason", it) }
+                put(taskJson)
+            }
+        },
+    )
+    put("lockedUntilMillis", lockedUntilMillis)
+    put("betaTokens", betaTokens)
+    put(
+        "history",
+        JSONArray().apply {
+            history.forEach { entry ->
+                val entryJson = JSONObject()
+                    .put("id", entry.id)
+                    .put("title", entry.title)
+                    .put("detail", entry.detail)
+                    .put("minutesDelta", entry.minutesDelta)
+                    .put("kind", entry.kind)
+                    .put("timestampMillis", entry.timestampMillis)
+                entry.rarity?.let { entryJson.put("rarity", it) }
+                put(entryJson)
+            }
+        },
+    )
+    put("discreetMode", discreetMode)
+    put("lastResetDay", lastResetDay)
+    put("onboardingComplete", onboardingComplete)
+    put("tutorialComplete", tutorialComplete)
+    put("strictMode", strictMode)
+    put("geminiApiKey", geminiApiKey)
+    put("proofChecksEnabled", proofChecksEnabled)
+    put("proofChancePercentPerHour", proofChancePercentPerHour)
+    put("proofQuietStartHour", proofQuietStartHour)
+    put("proofQuietEndHour", proofQuietEndHour)
+    put("proofFailurePenaltyMinutes", proofFailurePenaltyMinutes)
+    put(
+        "proofHistory",
+        JSONArray().apply {
+            proofHistory.forEach { log ->
+                put(
+                    JSONObject()
+                        .put("id", log.id)
+                        .put("code", log.code)
+                        .put("passed", log.passed)
+                        .put("confidence", log.confidence)
+                        .put("reason", log.reason)
+                        .put("penaltyMinutes", log.penaltyMinutes)
+                        .put("timestampMillis", log.timestampMillis),
+                )
+            }
+        },
+    )
+    put("selectedCase", selectedCase.name)
+    proofCheck?.let { put("proofCheck", JSONObject(it.toJsonString())) }
+}.toString()
 
 private fun AppState.toMetaEntity(): AppMetaEntity =
     AppMetaEntity(
