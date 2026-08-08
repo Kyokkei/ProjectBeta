@@ -20,6 +20,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -1880,10 +1883,21 @@ private fun MachineTile(
 private fun RouletteMachineCard(betaTokens: Int, onResult: (GamblingResult) -> Unit) {
     val scope = rememberCoroutineScope()
     val rotation = remember { Animatable(0f) }
+    val ballAngle = remember { Animatable(-PI.toFloat() / 2f) }
     var spinning by remember { mutableStateOf(false) }
+    var pointerBounce by remember { mutableStateOf(false) }
     var lastNumber by remember { mutableStateOf<Int?>(null) }
     var colorBets by remember { mutableStateOf(setOf(RouletteBetColor.Black)) }
     var numberBets by remember { mutableStateOf(setOf(17)) }
+    val pointerOffset by animateDpAsState(
+        targetValue = if (pointerBounce) 6.dp else (-2).dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioHighBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        finishedListener = { pointerBounce = false },
+        label = "pointerBounce",
+    )
     val rouletteNumbers = listOf(0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26)
 
     GlassCard(tier = 2, shape = RoundedCornerShape(20.dp)) {
@@ -1903,13 +1917,14 @@ private fun RouletteMachineCard(betaTokens: Int, onResult: (GamblingResult) -> U
                         rotation = rotation.value,
                         numbers = rouletteNumbers,
                         landedNumber = if (!spinning) lastNumber else null,
+                        ballAngle = ballAngle.value,
                         modifier = Modifier.fillMaxSize(),
                     )
                     Canvas(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .size(width = 14.dp, height = 22.dp)
-                            .offset(y = (-2).dp),
+                            .offset(y = pointerOffset),
                     ) {
                         val w = size.width
                         val h = size.height
@@ -1947,10 +1962,16 @@ private fun RouletteMachineCard(betaTokens: Int, onResult: (GamblingResult) -> U
                         FilterChip(
                             selected = color in colorBets,
                             onClick = {
+                                val nowSelected = color !in colorBets
                                 val newColorBets = if (color in colorBets) colorBets - color else colorBets + color
                                 colorBets = newColorBets
-                                if (color != RouletteBetColor.Green && color in newColorBets) {
-                                    numberBets = numberBets - 0
+                                when {
+                                    color == RouletteBetColor.Green && nowSelected -> {
+                                        numberBets = setOf(0)
+                                    }
+                                    color != RouletteBetColor.Green && nowSelected -> {
+                                        numberBets = numberBets - 0
+                                    }
                                 }
                             },
                             enabled = !spinning && !(color != RouletteBetColor.Green && numberBets == setOf(0)),
@@ -1959,22 +1980,31 @@ private fun RouletteMachineCard(betaTokens: Int, onResult: (GamblingResult) -> U
                         )
                     }
                 }
-                if (0 in numberBets && RouletteBetColor.Green !in colorBets) {
-                    Text(
-                        "0 is Green only — Red/Black cleared",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Muted.copy(alpha = 0.7f),
-                    )
-                }
                 Text("Bet on number", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 RouletteNumberTable(
                     selectedNumbers = numberBets,
+                    disabledNumbers = if (RouletteBetColor.Green in colorBets) (1..36).toSet() else emptySet(),
                     enabled = !spinning,
                     onToggle = { number ->
+                        val willBeSelected = number !in numberBets
                         val newNumberBets = if (number in numberBets) numberBets - number else numberBets + number
-                        numberBets = newNumberBets
-                        if (number == 0 && 0 in newNumberBets) {
-                            colorBets = colorBets - RouletteBetColor.Red - RouletteBetColor.Black
+                        if (willBeSelected) {
+                            when {
+                                number == 0 -> {
+                                    numberBets = setOf(0)
+                                    colorBets = setOf(RouletteBetColor.Green)
+                                }
+                                RouletteBetColor.Green in colorBets -> {
+                                    colorBets = colorBets - RouletteBetColor.Green
+                                    numberBets = newNumberBets
+                                }
+                                else -> numberBets = newNumberBets
+                            }
+                        } else {
+                            if (number == 0) {
+                                colorBets = colorBets - RouletteBetColor.Green
+                            }
+                            numberBets = newNumberBets
                         }
                     },
                 )
@@ -2018,7 +2048,25 @@ private fun RouletteMachineCard(betaTokens: Int, onResult: (GamblingResult) -> U
                         var forwardDelta = positiveModulo(targetFinalAngle - currentAngle, 2f * PI.toFloat())
                         if (forwardDelta < 0.01f) forwardDelta += 2f * PI.toFloat()
                         val totalDelta = 5f * 2f * PI.toFloat() + forwardDelta
-                        rotation.animateTo(currentAngle + totalDelta, animationSpec = tween(4_500, easing = FastOutSlowInEasing))
+                        val ballSpins = 8f
+                        val ballStartAngle = ballAngle.value
+                        val ballTotalDelta = -(ballSpins * 2f * PI.toFloat())
+
+                        launch {
+                            rotation.animateTo(
+                                currentAngle + totalDelta,
+                                animationSpec = tween(4_500, easing = FastOutSlowInEasing),
+                            )
+                        }
+                        launch {
+                            ballAngle.animateTo(
+                                ballStartAngle + ballTotalDelta,
+                                animationSpec = tween(4_200, easing = FastOutSlowInEasing),
+                            )
+                            ballAngle.snapTo(-PI.toFloat() / 2f)
+                            pointerBounce = true
+                        }
+                        delay(4_500)
                         spinning = false
                         lastNumber = landed
                         onResult(rouletteResult(landed, colorBets, numberBets))
@@ -2042,6 +2090,7 @@ private fun RouletteMachineCard(betaTokens: Int, onResult: (GamblingResult) -> U
 @Composable
 private fun RouletteNumberTable(
     selectedNumbers: Set<Int>,
+    disabledNumbers: Set<Int> = emptySet(),
     enabled: Boolean,
     onToggle: (Int) -> Unit,
 ) {
@@ -2078,6 +2127,7 @@ private fun RouletteNumberTable(
             ) {
                 rowNumbers.forEach { number ->
                     val selected = number in selectedNumbers
+                    val isDisabled = number in disabledNumbers
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
@@ -2085,14 +2135,18 @@ private fun RouletteNumberTable(
                             .height(30.dp)
                             .clip(RoundedCornerShape(5.dp))
                             .background(
-                                if (selected) Gold else rouletteNumberColor(number).copy(alpha = 0.86f)
+                                when {
+                                    selected -> Gold
+                                    isDisabled -> rouletteNumberColor(number).copy(alpha = 0.25f)
+                                    else -> rouletteNumberColor(number).copy(alpha = 0.86f)
+                                }
                             )
                             .border(
                                 width = if (selected) 2.dp else 1.dp,
                                 color = if (selected) Color.White else Color.White.copy(alpha = 0.10f),
                                 shape = RoundedCornerShape(5.dp),
                             )
-                            .clickable(enabled = enabled) { onToggle(number) },
+                            .clickable(enabled = enabled && !isDisabled) { onToggle(number) },
                     ) {
                         Text(
                             text = number.toString(),
@@ -2112,6 +2166,7 @@ private fun RouletteWheel(
     rotation: Float,
     numbers: List<Int>,
     landedNumber: Int? = null,
+    ballAngle: Float = -PI.toFloat() / 2f,
     modifier: Modifier = Modifier,
 ) {
     Canvas(modifier = modifier) {
@@ -2191,15 +2246,23 @@ private fun RouletteWheel(
         drawCircle(color = Ink, radius = diameter * 0.17f)
         drawCircle(color = Gold, radius = diameter * 0.18f, style = Stroke(width = 4f))
 
-        val ballAngle = -PI.toFloat() / 2f
-        val radius = diameter * 0.41f
+        val ballRadius = diameter * 0.41f
+        val bx = center.x + cos(ballAngle.toDouble()).toFloat() * ballRadius
+        val by = center.y + sin(ballAngle.toDouble()).toFloat() * ballRadius
+        drawCircle(
+            color = Color.Black.copy(alpha = 0.45f),
+            radius = 9f,
+            center = androidx.compose.ui.geometry.Offset(bx + 2f, by + 2f),
+        )
         drawCircle(
             color = Color.White,
-            radius = 7f,
-            center = androidx.compose.ui.geometry.Offset(
-                center.x + cos(ballAngle).toFloat() * radius,
-                center.y + sin(ballAngle).toFloat() * radius,
-            ),
+            radius = 8f,
+            center = androidx.compose.ui.geometry.Offset(bx, by),
+        )
+        drawCircle(
+            color = Color.White.copy(alpha = 0.8f),
+            radius = 3f,
+            center = androidx.compose.ui.geometry.Offset(bx - 2f, by - 2f),
         )
     }
 }
