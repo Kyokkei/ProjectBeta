@@ -8,16 +8,6 @@
     android:gravity="center_vertical"
     android:padding="8dp">
 
-    <!-- Anime girl pointing right -->
-    <ImageView
-        android:id="@+id/widget_girl_image"
-        android:layout_width="0dp"
-        android:layout_height="match_parent"
-        android:layout_weight="1.2"
-        android:scaleType="centerCrop"
-        android:src="@drawable/widget_pointing_girl"
-        android:contentDescription="@null" />
-
     <!-- Hours locked text -->
     <LinearLayout
         android:layout_width="0dp"
@@ -48,4 +38,14 @@
             android:layout_marginTop="2dp" />
 
     </LinearLayout>
+
+    <!-- Anime girl pointing left at the hours -->
+    <ImageView
+        android:id="@+id/widget_girl_image"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1.2"
+        android:scaleType="centerCrop"
+        android:src="@drawable/widget_pointing_girl"
+        android:contentDescription="@null" />
 </LinearLayout>
