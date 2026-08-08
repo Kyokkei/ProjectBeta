@@ -59,7 +59,6 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Remove
@@ -369,12 +368,11 @@ private enum class Screen(val label: String, val icon: ImageVector) {
     Gacha("Gamble", Icons.Filled.Casino),
     History("History", Icons.Filled.History),
     Shop("Shop", Icons.Filled.ShoppingBag),
-    CensorVault("Censor Vault", Icons.Filled.Image),
     Settings("Settings", Icons.Filled.Settings),
 }
 
 private val PrimaryScreens = listOf(Screen.Dashboard, Screen.Tasks, Screen.Gacha)
-private val DrawerScreens = listOf(Screen.History, Screen.Shop, Screen.CensorVault, Screen.Settings)
+private val DrawerScreens = listOf(Screen.History, Screen.Shop, Screen.Settings)
 
 private enum class TutorialTarget {
     Countdown,
@@ -414,7 +412,7 @@ private val tutorialPages = listOf(
     ),
     TutorialPage(
         title = "Everything else lives here",
-        body = "Open the menu for History, Shop, Censor Vault, Settings, and the button to replay this tour.",
+        body = "Open the menu for History, Shop, Settings, and the button to replay this tour.",
         screen = Screen.Dashboard,
         target = TutorialTarget.Menu,
     ),
@@ -925,11 +923,6 @@ private fun RouleteApp() {
                         Screen.Shop -> ShopScreen(
                             state = state,
                             onBuyShopMercy = { minutes, cost -> state = state.buyShopMercy(minutes, cost) },
-                        )
-                        Screen.CensorVault -> PlaceholderScreen(
-                            title = "Censor Vault",
-                            subtitle = "Local image censor tools land here next.",
-                             body = "Import images, add black bars, pixel blocks, or other local censor effects.",
                         )
                             }
                         }
@@ -1904,7 +1897,7 @@ private fun RouletteMachineCard(betaTokens: Int, onResult: (GamblingResult) -> U
                 Text("Pick the number. Cost $RouletteCostTokens BetaTokens.", color = Muted, fontSize = 13.sp)
             }
             BoxWithConstraints(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
-                val wheelSize = (maxWidth * 0.75f).coerceAtMost(240.dp)
+                val wheelSize = maxWidth - 16.dp
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.size(wheelSize)) {
                     RouletteWheel(
                         rotation = rotation.value,
@@ -1912,29 +1905,38 @@ private fun RouletteMachineCard(betaTokens: Int, onResult: (GamblingResult) -> U
                         landedNumber = if (!spinning) lastNumber else null,
                         modifier = Modifier.fillMaxSize(),
                     )
-                    Box(
+                    Canvas(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .offset(y = 4.dp),
+                            .size(width = 14.dp, height = 22.dp)
+                            .offset(y = (-2).dp),
                     ) {
+                        val w = size.width
+                        val h = size.height
+                        val markerColor = if (!spinning && lastNumber != null) Cyan else Gold
+                        val path = androidx.compose.ui.graphics.Path().apply {
+                            moveTo(w / 2f, h)
+                            lineTo(0f, 0f)
+                            lineTo(w, 0f)
+                            close()
+                        }
+                        drawPath(path, color = markerColor)
+                        drawPath(
+                            path,
+                            color = Color.White.copy(alpha = 0.4f),
+                            style = Stroke(width = 1.5f),
+                        )
                         if (!spinning && lastNumber != null) {
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .align(Alignment.Center)
-                                    .clip(CircleShape)
-                                    .background(
-                                        Brush.radialGradient(listOf(CyanGlow, Color.Transparent))
-                                    ),
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(CyanGlow, Color.Transparent),
+                                    radius = 24f,
+                                    center = androidx.compose.ui.geometry.Offset(w / 2f, h),
+                                ),
+                                radius = 24f,
+                                center = androidx.compose.ui.geometry.Offset(w / 2f, h),
                             )
                         }
-                        Box(
-                            modifier = Modifier
-                                .size(24.dp)
-                                .align(Alignment.Center)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(if (!spinning && lastNumber != null) Cyan else Gold),
-                        )
                     }
                 }
             }
@@ -2166,12 +2168,12 @@ private fun RouletteWheel(
             }
 
             val midAngle = startAngleRad + slice / 2f
-            val labelRadius = diameter / 2f - 36f
+            val labelRadius = diameter / 2f - 28f
             val lx = center.x + cos(midAngle.toDouble()).toFloat() * labelRadius
             val ly = center.y + sin(midAngle.toDouble()).toFloat() * labelRadius
             val textPaint = Paint().apply {
                 this.color = android.graphics.Color.WHITE
-                textSize = if (number == landedNumber) 15.sp.toPx() else 12.sp.toPx()
+                textSize = if (number == landedNumber) 16.sp.toPx() else 13.sp.toPx()
                 textAlign = Paint.Align.CENTER
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                 isAntiAlias = true
@@ -2881,14 +2883,57 @@ private fun CountdownCard(
                     Text(formatDateTime(lockedUntilMillis), color = Color.White, fontWeight = FontWeight.SemiBold)
                 }
             }
-            Text(
-                text = formatDuration(remainingMillis),
-                color = Cyan,
-                fontWeight = FontWeight.Black,
-                fontSize = 52.sp,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier.graphicsLayer { alpha = tickAlpha },
-            )
+            val totalSeconds = remainingMillis / 1_000
+            val days = totalSeconds / 86_400
+            val hours = (totalSeconds % 86_400) / 3_600
+            val minutes = (totalSeconds % 3_600) / 60
+            val seconds = totalSeconds % 60
+            if (days > 0) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer { alpha = tickAlpha },
+                    verticalArrangement = Arrangement.spacedBy((-4).dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = "${days}d",
+                            color = Cyan,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 44.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        Text(
+                            text = "${hours}h",
+                            color = Cyan,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 44.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                    Text(
+                        text = "%02dm %02ds".format(minutes, seconds),
+                        color = Cyan.copy(alpha = 0.65f),
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 22.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            } else {
+                Text(
+                    text = "%02d:%02d:%02d".format(hours, minutes, seconds),
+                    color = Cyan,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 52.sp,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer { alpha = tickAlpha },
+                )
+            }
             Text(
                 text = when {
                     frozen -> "Frozen until proof passes."
