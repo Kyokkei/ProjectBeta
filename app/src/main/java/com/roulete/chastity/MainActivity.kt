@@ -664,15 +664,15 @@ private fun RouleteApp() {
         val draftTasks = state.tasks.filter { it.validationStatus == MissionValidationStatus.Draft }
         if (draftTasks.isEmpty()) {
             val validated = state.tasks.count { it.validationStatus == MissionValidationStatus.Validated }
-            missionValidationStatus = "$validated/${state.tasks.size} missions already cached. Edit rejected missions before validating again."
+            missionValidationStatus = "$validated/${state.tasks.size} missions already judged. Edit rejected ones before trying again."
             return
         }
         if (state.geminiApiKey.isBlank()) {
-            missionValidationStatus = "Add Gemini API key in Settings first."
+            missionValidationStatus = "Add your Gemini API key in Settings first."
             return
         }
         missionValidationBusy = true
-        missionValidationStatus = "Gemini is judging ${draftTasks.size} draft mission${if (draftTasks.size == 1) "" else "s"}..."
+        missionValidationStatus = "Judging your mission${if (draftTasks.size == 1) "" else "s"}. You're not allowed to touch while you wait."
         scope.launch {
             val result = runCatching {
                 GeminiMissionClient.validate(
@@ -686,10 +686,10 @@ private fun RouleteApp() {
                     val updatedState = state.applyMissionValidation(validations)
                     state = updatedState
                     val approved = updatedState.tasks.count { it.validationStatus == MissionValidationStatus.Validated }
-                    missionValidationStatus = "$approved/${updatedState.tasks.size} missions validated."
+                    missionValidationStatus = "$approved/${updatedState.tasks.size} missions judged. Now behave."
                 }
                 .onFailure {
-                    missionValidationStatus = "Mission validation failed: ${it.message ?: "unknown error"}"
+                    missionValidationStatus = "Judgment failed. Check your API key. ${it.message ?: ""}"
                 }
         }
     }
@@ -2492,11 +2492,37 @@ private fun LockDropBoard(slots: List<DropSlot>, progress: Float, targetSlot: In
         }
         val slotWidth = boardWidth / slots.size
         slots.forEachIndexed { index, slot ->
+            val slotLeft = index * slotWidth + 2f
+            val slotTop = boardHeight - 54f
+            val slotRight = slotLeft + slotWidth - 4f
+            val slotBottom = slotTop + 36f
+
             drawRoundRect(
-                color = slot.color,
-                topLeft = androidx.compose.ui.geometry.Offset(index * slotWidth + 2f, boardHeight - 54f),
+                brush = Brush.verticalGradient(
+                    colors = listOf(slot.color.copy(alpha = 0.55f), slot.color),
+                    startY = slotTop,
+                    endY = slotBottom,
+                ),
+                topLeft = androidx.compose.ui.geometry.Offset(slotLeft, slotTop),
                 size = androidx.compose.ui.geometry.Size(slotWidth - 4f, 36f),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(8f, 8f),
+            )
+            drawRoundRect(
+                color = Color.White.copy(alpha = 0.18f),
+                topLeft = androidx.compose.ui.geometry.Offset(slotLeft, slotTop),
+                size = androidx.compose.ui.geometry.Size(slotWidth - 4f, 36f),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(8f, 8f),
+                style = Stroke(width = 1.2f),
+            )
+        }
+        if (progress >= 0.95f) {
+            val highlightLeft = targetSlot * slotWidth + 1f
+            drawRoundRect(
+                color = Color.White.copy(alpha = 0.22f),
+                topLeft = androidx.compose.ui.geometry.Offset(highlightLeft, boardHeight - 55f),
+                size = androidx.compose.ui.geometry.Size(slotWidth - 2f, 38f),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(9f, 9f),
+                style = Stroke(width = 2.5f),
             )
         }
         val wave = sin(progress * PI * 8).toFloat()
@@ -4025,30 +4051,30 @@ private fun dropSlots(risk: DropRisk): List<DropSlot> =
     when (risk) {
         DropRisk.Low -> listOf(
             DropSlot("+1d", 1.daysMinutes, 3, Coral),
-            DropSlot("+6h", 6.hoursMinutes, 7, Color(0xFFC724B1)),
+            DropSlot("+6h", 6.hoursMinutes, 7, CoralDim),
             DropSlot("+2h", 2.hoursMinutes, 14, Violet),
-            DropSlot("+1h", 1.hoursMinutes, 18, Color(0xFF673AB7)),
-            DropSlot("-30m", -30, 12, Cyan),
-            DropSlot("-1h", -1.hoursMinutes, 7, Cyan),
-            DropSlot("-6h", -6.hoursMinutes, 2, Gold),
+            DropSlot("+1h", 1.hoursMinutes, 18, Violet.copy(alpha = 0.6f)),
+            DropSlot("-30m", -30, 12, CyanDim),
+            DropSlot("-1h", -1.hoursMinutes, 7, CyanDim),
+            DropSlot("-6h", -6.hoursMinutes, 2, Cyan),
         )
         DropRisk.Mid -> listOf(
             DropSlot("+3d", 3.daysMinutes, 3, Coral),
-            DropSlot("+1d", 1.daysMinutes, 8, Color(0xFFC724B1)),
+            DropSlot("+1d", 1.daysMinutes, 8, CoralDim),
             DropSlot("+8h", 8.hoursMinutes, 14, Violet),
-            DropSlot("+3h", 3.hoursMinutes, 18, Color(0xFF673AB7)),
-            DropSlot("-1h", -1.hoursMinutes, 10, Cyan),
+            DropSlot("+3h", 3.hoursMinutes, 18, Violet.copy(alpha = 0.6f)),
+            DropSlot("-1h", -1.hoursMinutes, 10, CyanDim),
             DropSlot("-4h", -4.hoursMinutes, 5, Cyan),
-            DropSlot("-1d", -1.daysMinutes, 1, Gold),
+            DropSlot("-1d", -1.daysMinutes, 1, Mint),
         )
         DropRisk.High -> listOf(
             DropSlot("+7d", 7.daysMinutes, 4, Coral),
-            DropSlot("+3d", 3.daysMinutes, 8, Color(0xFFC724B1)),
+            DropSlot("+3d", 3.daysMinutes, 8, CoralDim),
             DropSlot("+1d", 1.daysMinutes, 14, Violet),
-            DropSlot("+12h", 12.hoursMinutes, 20, Color(0xFF673AB7)),
-            DropSlot("-3h", -3.hoursMinutes, 7, Cyan),
+            DropSlot("+12h", 12.hoursMinutes, 20, Violet.copy(alpha = 0.6f)),
+            DropSlot("-3h", -3.hoursMinutes, 7, CyanDim),
             DropSlot("-12h", -12.hoursMinutes, 3, Cyan),
-            DropSlot("-2d", -2.daysMinutes, 1, Gold),
+            DropSlot("-2d", -2.daysMinutes, 1, Mint),
         )
     }
 

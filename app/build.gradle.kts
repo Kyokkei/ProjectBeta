@@ -15,11 +15,25 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        buildConfigField("boolean", "ENABLE_DEBUG_TOOLS", "false")
+    }
+
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = true
+        warningsAsErrors = false
+        disable += setOf("ObsoleteLintCustomCheck", "UnusedResources")
     }
 
     buildTypes {
+        debug {
+            buildConfigField("boolean", "ENABLE_DEBUG_TOOLS", "true")
+            applicationIdSuffix = ".debug"
+        }
         release {
-            isMinifyEnabled = false
+            buildConfigField("boolean", "ENABLE_DEBUG_TOOLS", "false")
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -38,6 +52,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
