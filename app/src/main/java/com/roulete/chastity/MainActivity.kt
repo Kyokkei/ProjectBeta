@@ -219,7 +219,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private data class DailyTask(
+internal data class DailyTask(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
     val rewardTokens: Int = 0,
@@ -231,7 +231,7 @@ private data class DailyTask(
     val missionSource: MissionSource = MissionSource.Custom,
 )
 
-private data class HistoryEntry(
+internal data class HistoryEntry(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
     val detail: String,
@@ -241,7 +241,7 @@ private data class HistoryEntry(
     val timestampMillis: Long = System.currentTimeMillis(),
 )
 
-private data class ProofCheck(
+internal data class ProofCheck(
     val code: String,
     val frozenRemainingMillis: Long,
     val startedAtMillis: Long = System.currentTimeMillis(),
@@ -255,7 +255,7 @@ private data class ProofVerdict(
     val reason: String,
 )
 
-private data class ProofLog(
+internal data class ProofLog(
     val id: String = UUID.randomUUID().toString(),
     val code: String,
     val passed: Boolean,
@@ -265,14 +265,14 @@ private data class ProofLog(
     val timestampMillis: Long = System.currentTimeMillis(),
 )
 
-private enum class MissionValidationStatus {
+internal enum class MissionValidationStatus {
     Draft,
     Validated,
     Rejected,
     Failed,
 }
 
-private enum class MissionSource {
+internal enum class MissionSource {
     Template,
     Custom,
     Daily,
@@ -313,7 +313,7 @@ private val DAILY_AUTO_MISSIONS: List<DailyTask> = listOf(
     ),
 )
 
-private enum class MissionDifficulty(val label: String, val tokens: Int) {
+internal enum class MissionDifficulty(val label: String, val tokens: Int) {
     Easy("Easy", 5),
     Medium("Medium", 7),
     Hard("Hard", 10),
@@ -327,9 +327,10 @@ private data class MissionValidationResult(
     val reason: String,
 )
 
-private data class AppState(
+internal data class AppState(
     val tasks: List<DailyTask> = emptyList(),
     val lockedUntilMillis: Long = System.currentTimeMillis(),
+    val lockedSinceMillis: Long = System.currentTimeMillis(),
     val betaTokens: Int = 0,
     val history: List<HistoryEntry> = emptyList(),
     val discreetMode: Boolean = false,
@@ -356,7 +357,7 @@ private enum class Rarity {
     Gold,
 }
 
-private enum class CaseType(val title: String, val subtitle: String) {
+internal enum class CaseType(val title: String, val subtitle: String) {
     Pity("Pity Case", "Soft odds. Still embarrassing."),
     Denial("Denial Case", "The default little trap."),
     Extinction("Extinction Case", "For bad decisions only."),
@@ -604,6 +605,7 @@ private fun RouleteApp() {
         state = if (verdict.passed) {
             state.copy(
                 lockedUntilMillis = System.currentTimeMillis() + proof.frozenRemainingMillis,
+                lockedSinceMillis = System.currentTimeMillis(),
                 proofCheck = null,
                 proofHistory = listOf(proofLog) + state.proofHistory,
                 history = listOf(entry) + state.history,
@@ -739,6 +741,7 @@ private fun RouleteApp() {
                     state = state.copy(
                         tasks = state.tasks.map { it.copy(completed = false) },
                         lockedUntilMillis = millis,
+                        lockedSinceMillis = System.currentTimeMillis(),
                         betaTokens = max(state.betaTokens, CaseCostTokens),
                         onboardingComplete = true,
                         history = listOf(
@@ -2515,6 +2518,27 @@ private fun LockDropBoard(slots: List<DropSlot>, progress: Float, targetSlot: In
                 style = Stroke(width = 1.2f),
             )
         }
+        val labelPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = 11.sp.toPx()
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.create(
+                android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD
+            )
+            isAntiAlias = true
+            setShadowLayer(4f, 0f, 1f, android.graphics.Color.BLACK)
+        }
+
+        slots.forEachIndexed { index, slot ->
+            val slotCenterX = index * slotWidth + slotWidth / 2f
+            val slotCenterY = boardHeight - 54f + 22f
+            drawContext.canvas.nativeCanvas.drawText(
+                slot.label,
+                slotCenterX,
+                slotCenterY,
+                labelPaint,
+            )
+        }
         if (progress >= 0.95f) {
             val highlightLeft = targetSlot * slotWidth + 1f
             drawRoundRect(
@@ -2533,23 +2557,6 @@ private fun LockDropBoard(slots: List<DropSlot>, progress: Float, targetSlot: In
         drawCircle(Gold.copy(alpha = 0.32f), radius = 17f, center = androidx.compose.ui.geometry.Offset(x, y))
         drawCircle(Color.White, radius = 10f, center = androidx.compose.ui.geometry.Offset(x, y))
         drawCircle(Gold, radius = 10f, center = androidx.compose.ui.geometry.Offset(x, y), style = Stroke(width = 3f))
-    }
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(top = 254.dp),
-    ) {
-        slots.forEach { slot ->
-            Text(
-                slot.label,
-                color = Color.White,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Black,
-                maxLines = 1,
-                modifier = Modifier.weight(1f),
-            )
-        }
     }
 }
 
@@ -3743,6 +3750,7 @@ private fun AppState.withDailyReset(): AppState {
         } else {
             lockedUntilMillis
         },
+        lockedSinceMillis = System.currentTimeMillis(),
         history = penaltyEntry?.let { listOf(it) + history } ?: history,
     )
 }
@@ -3846,7 +3854,11 @@ private fun AppState.adjustTime(minutes: Int, kind: String, label: String): AppS
         minutesDelta = minutes,
         kind = kind.lowercase(),
     )
-    return copy(lockedUntilMillis = newLockedUntil, history = listOf(entry) + history)
+    return copy(
+        lockedUntilMillis = newLockedUntil,
+        lockedSinceMillis = System.currentTimeMillis(),
+        history = listOf(entry) + history,
+    )
 }
 
 private fun AppState.resetLock(): AppState {
@@ -3858,6 +3870,7 @@ private fun AppState.resetLock(): AppState {
     )
     return copy(
         lockedUntilMillis = System.currentTimeMillis(),
+        lockedSinceMillis = System.currentTimeMillis(),
         proofCheck = null,
         history = listOf(entry) + history,
     )
@@ -3876,6 +3889,7 @@ private fun AppState.applyPrize(prize: Prize): AppState {
     )
     return copy(
         lockedUntilMillis = newLockedUntil,
+        lockedSinceMillis = System.currentTimeMillis(),
         betaTokens = max(0, betaTokens - CaseCostTokens),
         history = listOf(entry) + history,
     )
@@ -3893,6 +3907,7 @@ private fun AppState.applyGamblingResult(result: GamblingResult): AppState {
     )
     return copy(
         lockedUntilMillis = newLockedUntil,
+        lockedSinceMillis = System.currentTimeMillis(),
         betaTokens = max(0, betaTokens - cost),
         history = listOf(entry) + history,
     )
@@ -3910,6 +3925,7 @@ private fun AppState.buyShopMercy(minutes: Int, cost: Int): AppState {
     )
     return copy(
         lockedUntilMillis = newLockedUntil,
+        lockedSinceMillis = System.currentTimeMillis(),
         betaTokens = betaTokens - cost,
         history = listOf(entry) + history,
     )
@@ -4530,7 +4546,7 @@ private fun Bitmap.toJpegBase64(): String {
     return Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
 }
 
-private object AppStore {
+internal object AppStore {
     private const val Prefs = "roulete_store"
     private const val StateKey = "state"
     private const val GeminiApiKey = "gemini_api_key"
@@ -4584,9 +4600,17 @@ private object AppStore {
     private fun loadRoom(context: Context, dao: BetalockerDao): AppState? {
         val meta = dao.getMeta() ?: return null
         val prefs = context.getSharedPreferences(Prefs, Context.MODE_PRIVATE)
+        val lockedSinceMillis = prefs.getString(StateKey, null)
+            ?.let { legacy ->
+                runCatching {
+                    JSONObject(legacy).optLong("lockedSinceMillis", System.currentTimeMillis())
+                }.getOrNull()
+            }
+            ?: System.currentTimeMillis()
         return AppState(
             tasks = dao.getMissions().map { it.toDailyTask() },
             lockedUntilMillis = meta.lockedUntilMillis,
+            lockedSinceMillis = lockedSinceMillis,
             betaTokens = meta.betaTokens,
             history = dao.getHistory().map { it.toHistoryEntry() },
             discreetMode = meta.discreetMode,
@@ -4640,6 +4664,7 @@ private object AppStore {
                 )
             },
             lockedUntilMillis = root.getLong("lockedUntilMillis"),
+            lockedSinceMillis = root.optLong("lockedSinceMillis", System.currentTimeMillis()),
             betaTokens = if (root.has("betaTokens")) root.optInt("betaTokens", 0) else root.optInt("availableBoxes", 0) * CaseCostTokens,
             history = root.getJSONArray("history").mapObjects { entry ->
                 HistoryEntry(
@@ -4710,6 +4735,7 @@ private fun AppState.toLegacyJson(): String = JSONObject().apply {
         },
     )
     put("lockedUntilMillis", lockedUntilMillis)
+    put("lockedSinceMillis", lockedSinceMillis)
     put("betaTokens", betaTokens)
     put(
         "history",

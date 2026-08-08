@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">betalocker</string>
+    <string name="widget_description">betalocker cage timer</string>
 </resources>
