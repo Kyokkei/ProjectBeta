@@ -22,16 +22,15 @@ internal fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, 
     val now = System.currentTimeMillis()
     val isLocked = state.lockedUntilMillis > now
 
-    val hoursLocked: Long = if (isLocked) {
-        (now - state.lockedSinceMillis) / (1000L * 60 * 60)
-    } else {
-        0L
-    }
+    val elapsedMillis = (now - state.lockedSinceMillis).coerceAtLeast(0L)
+    val hoursLocked = elapsedMillis / 3_600_000L
+    val daysLocked = elapsedMillis / 86_400_000L
 
-    val hoursText = if (isLocked) {
-        "${hoursLocked}+ time denied"
-    } else {
-        "Free 🔓"
+    val hoursText = when {
+        !isLocked -> "Free 🔓"
+        daysLocked >= 1L -> if (daysLocked == 1L) "1 day denied" else "$daysLocked days denied"
+        hoursLocked == 1L -> "1 hour denied"
+        else -> "$hoursLocked hours denied"
     }
 
     val views = RemoteViews(context.packageName, R.layout.widget_lock)
