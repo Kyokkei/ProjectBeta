@@ -1,5 +1,6 @@
 package com.roulete.chastity
 
+import androidx.annotation.DrawableRes
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Paint
@@ -15,13 +16,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -116,6 +120,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Rect
@@ -1824,6 +1829,65 @@ private fun GamblingScreen(
     }
 }
 
+@DrawableRes
+private fun caseChestDrawable(caseType: CaseType): Int = when (caseType) {
+    CaseType.Pity -> R.drawable.chest_pity
+    CaseType.Denial -> R.drawable.chest_denial
+    CaseType.Extinction -> R.drawable.chest_extinction
+}
+
+private enum class CasePhase { Chest, Opening, Result }
+
+@Composable
+private fun ChestView(caseType: CaseType, isOpening: Boolean, modifier: Modifier = Modifier) {
+    val scale by animateFloatAsState(
+        targetValue = if (isOpening) 1.08f else 1f,
+        animationSpec = tween(300, easing = FastOutSlowInEasing),
+        label = "chestScale",
+    )
+    val alpha by animateFloatAsState(
+        targetValue = if (isOpening) 0f else 1f,
+        animationSpec = tween(400, easing = FastOutSlowInEasing),
+        label = "chestAlpha",
+    )
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                this.alpha = alpha
+            },
+    ) {
+        Image(
+            painter = painterResource(id = caseChestDrawable(caseType)),
+            contentDescription = "${caseType.title} chest",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        if (!isOpening) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.85f)
+                    .height(20.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color.Transparent,
+                                Cyan.copy(alpha = 0.35f),
+                                Color.Transparent,
+                            )
+                        )
+                    )
+                    .blur(12.dp),
+            )
+        }
+    }
+}
+
 @Composable
 private fun CaseMachineCard(
     state: AppState,
@@ -1837,6 +1901,16 @@ private fun CaseMachineCard(
     onSkip: () -> Unit,
     onCaseSelected: (CaseType) -> Unit,
 ) {
+    var phase by remember { mutableStateOf(CasePhase.Chest) }
+
+    LaunchedEffect(opening, pendingPrize) {
+        phase = when {
+            opening -> CasePhase.Opening
+            pendingPrize != null && !opening -> CasePhase.Result
+            else -> CasePhase.Chest
+        }
+    }
+
     GlassCard(
         tier = 2,
         shape = RoundedCornerShape(20.dp),
@@ -1853,26 +1927,74 @@ private fun CaseMachineCard(
                     Text("${state.betaTokens} BetaTokens - cost $CaseCostTokens. ${state.selectedCase.subtitle}", color = Muted)
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                CaseType.entries.forEach { case ->
-                    FilterChip(
-                        selected = state.selectedCase == case,
-                        onClick = { onCaseSelected(case) },
-                        enabled = !opening,
-                        label = { Text(case.title.removeSuffix(" Case")) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = CyanDim,
-                            selectedLabelColor = Cyan,
-                        ),
+
+            AnimatedVisibility(
+                visible = phase == CasePhase.Chest,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    CaseType.entries.forEach { case ->
+                        FilterChip(
+                            selected = state.selectedCase == case,
+                            onClick = { onCaseSelected(case) },
+                            enabled = !opening,
+                            label = { Text(case.title.removeSuffix(" Case")) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = CyanDim,
+                                selectedLabelColor = Cyan,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(
+                visible = phase == CasePhase.Chest,
+                enter = fadeIn(tween(350)),
+                exit = fadeOut(tween(400)) + shrinkVertically(tween(400)),
+            ) {
+                ChestView(
+                    caseType = state.selectedCase,
+                    isOpening = false,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp),
+                )
+            }
+
+            AnimatedVisibility(
+                visible = phase == CasePhase.Opening || phase == CasePhase.Result,
+                enter = fadeIn(tween(400)) + expandVertically(tween(400)),
+                exit = fadeOut(tween(300)) + shrinkVertically(tween(300)),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    AnimatedVisibility(visible = phase == CasePhase.Opening) {
+                        ChestView(
+                            caseType = state.selectedCase,
+                            isOpening = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(120.dp),
+                        )
+                    }
+                    ReelView(
+                        reel = reel,
+                        opening = opening,
+                        spinToken = spinToken,
+                        skipToken = skipToken,
                     )
                 }
             }
-            ReelView(
-                reel = reel,
-                opening = opening,
-                spinToken = spinToken,
-                skipToken = skipToken,
-            )
+
+            AnimatedVisibility(
+                visible = phase == CasePhase.Result,
+                enter = fadeIn(tween(400)) + expandVertically(),
+                exit = fadeOut(),
+            ) {
+                pendingPrize?.let { OutcomePanel(it) }
+            }
+
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 val insufficientTokens = state.betaTokens < CaseCostTokens
                 Button(
@@ -1880,7 +2002,10 @@ private fun CaseMachineCard(
                     onClick = onOpen,
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (insufficientTokens) CoralDim else Cyan,
+                        containerColor = when (phase) {
+                            CasePhase.Result -> Violet
+                            else -> if (insufficientTokens) CoralDim else Cyan
+                        },
                         contentColor = if (insufficientTokens) Color.White else Ink,
                         disabledContainerColor = if (insufficientTokens) CoralDim else Cyan,
                         disabledContentColor = if (insufficientTokens) Color.White else Ink,
@@ -1892,7 +2017,14 @@ private fun CaseMachineCard(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Text(if (opening) "Opening..." else "Open Case — $CaseCostTokens")
+                        Text(
+                            when {
+                                opening -> "Opening..."
+                                phase == CasePhase.Result -> "Open Again — $CaseCostTokens"
+                                insufficientTokens -> "Need $CaseCostTokens BetaTokens"
+                                else -> "Open Case — $CaseCostTokens"
+                            }
+                        )
                         if (!opening) {
                             Image(
                                 painter = painterResource(id = R.drawable.betacoin),
@@ -1906,11 +2038,6 @@ private fun CaseMachineCard(
                     OutlinedButton(onClick = onSkip) {
                         Text("Skip")
                     }
-                }
-            }
-            AnimatedVisibility(pendingPrize != null && !opening) {
-                pendingPrize?.let {
-                    OutcomePanel(it)
                 }
             }
         }
