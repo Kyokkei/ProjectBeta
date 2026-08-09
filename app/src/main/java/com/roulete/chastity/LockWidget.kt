@@ -28,11 +28,10 @@ internal fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, 
         0L
     }
 
-    val hoursText = when {
-        !isLocked -> "Free 🔓"
-        hoursLocked < 1L -> "< 1h locked"
-        hoursLocked == 1L -> "1 hour locked"
-        else -> "${hoursLocked}h locked"
+    val hoursText = if (isLocked) {
+        "${hoursLocked}+ time denied"
+    } else {
+        "Free 🔓"
     }
 
     val views = RemoteViews(context.packageName, R.layout.widget_lock)
