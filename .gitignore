@@ -3,6 +3,24 @@ build/
 app/build/
 .gradle/
 local.properties
+secrets.properties
+
+# Drafts & Private Documentation
+draft-readme/
+docs/
+drafts/
+*.draft.md
+*.draft
+*.tmp
+case-prize.txt
+prize-labels-and-some-others.md
+PLAN.md
+
+# API Keys & Secrets
+*.key
+*.pem
+*.env
+*.p12
 
 # Kotlin incremental
 .kotlin/

@@ -32,6 +32,7 @@ android {
         }
         release {
             buildConfigField("boolean", "ENABLE_DEBUG_TOOLS", "false")
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

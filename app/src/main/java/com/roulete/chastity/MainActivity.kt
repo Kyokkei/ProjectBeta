@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Base64
 import android.Manifest
 import android.content.pm.PackageManager
@@ -29,10 +30,11 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -117,6 +119,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -138,6 +141,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalDensity
@@ -566,8 +570,7 @@ private fun RouleteApp() {
     var doubleAttempt by remember { mutableStateOf(0) }
     var tutorialStep by remember { mutableStateOf(0) }
     val tutorialBounds = remember { mutableStateMapOf<TutorialTarget, Rect>() }
-    val isLocked = state.proofCheck != null || state.lockedUntilMillis > System.currentTimeMillis()
-    val strictActive = state.strictMode && isLocked
+    val strictActive = state.strictMode
     val rejectedMissionBlock = state.tasks.any { it.validationStatus == MissionValidationStatus.Rejected }
 
     fun startProofCheck() {
@@ -813,7 +816,9 @@ private fun RouleteApp() {
                         modifier = Modifier.clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
                     ) {
                         PrimaryScreens.forEach { screen ->
-                            val navAllowed = !opening && (!rejectedMissionBlock || screen == Screen.Tasks)
+                            // A case opening can safely finish in the background. Keeping navigation
+                            // available means a player is never trapped on the case screen by its reel.
+                            val navAllowed = !rejectedMissionBlock || screen == Screen.Tasks
                             NavigationBarItem(
                                 selected = selected == screen,
                                 onClick = { if (navAllowed || selected == screen) selected = screen },
@@ -968,9 +973,17 @@ private fun RouleteApp() {
                             onProofQuietEnd = { value -> state = state.copy(proofQuietEndHour = value) },
                             onProofFailurePenalty = { value -> state = state.copy(proofFailurePenaltyMinutes = value) },
                             onStartProofCheck = { startProofCheck() },
-                            onResetDaily = { if (!strictActive) state = state.copy(tasks = state.tasks.map { it.copy(completed = false, rewardClaimedDay = null) }) },
+                            onResetDaily = {
+                                if (!strictActive) {
+                                    state = state.copy(
+                                        tasks = state.tasks.map {
+                                            it.copy(completed = false, rewardClaimedDay = null)
+                                        },
+                                    )
+                                }
+                            },
                             onClearHistory = { if (!strictActive) state = state.copy(history = emptyList()) },
-                            onResetLock = { state = state.resetLock() },
+                            onResetLock = { if (!strictActive) state = state.resetLock() },
                             onReplayTutorial = { state = state.copy(tutorialComplete = false) },
                             onTourTargetBounds = { target, bounds -> tutorialBounds[target] = bounds },
                         )
@@ -1096,7 +1109,6 @@ private fun TutorialOverlay(
     onNext: () -> Unit,
     onSkip: () -> Unit,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
     val uriHandler = LocalUriHandler.current
     var overlayBounds by remember { mutableStateOf(Rect.Zero) }
     val localTarget = targetBounds?.let { target ->
@@ -1111,12 +1123,7 @@ private fun TutorialOverlay(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .onGloballyPositioned { overlayBounds = it.boundsInRoot() }
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = {},
-            ),
+            .onGloballyPositioned { overlayBounds = it.boundsInRoot() },
     ) {
         Canvas(
             modifier = Modifier
@@ -1462,15 +1469,6 @@ private fun DashboardScreen(
             }
         }
 
-        item {
-            SectionTitle("Latest verdict")
-            val latest = state.history.firstOrNull()
-            if (latest == null) {
-                EmptyPanel("No history yet. The house is waiting.")
-            } else {
-                HistoryRow(latest)
-            }
-        }
     }
 }
 
@@ -1761,7 +1759,9 @@ private fun GamblingScreen(
                     FilterChip(
                         selected = machine == option,
                         onClick = { machine = option },
-                        enabled = !opening,
+                        // Let players move to another machine while the case reel finishes in the
+                        // background instead of making the gambling screen feel frozen.
+                        enabled = true,
                         label = { Text(option.title) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = CyanDim,
@@ -1831,9 +1831,9 @@ private fun GamblingScreen(
 
 @DrawableRes
 private fun caseChestDrawable(caseType: CaseType): Int = when (caseType) {
-    CaseType.Pity -> R.drawable.chest_pity
-    CaseType.Denial -> R.drawable.chest_denial
-    CaseType.Extinction -> R.drawable.chest_extinction
+    CaseType.Pity -> R.drawable.chest_denial_transparent
+    CaseType.Denial -> R.drawable.chest_extinction_transparent
+    CaseType.Extinction -> R.drawable.chest_pity_transparent
 }
 
 private enum class CasePhase { Chest, Opening, Result }
@@ -1928,8 +1928,10 @@ private fun CaseMachineCard(
                 }
             }
 
+            // Keep the choice available after a result. Selecting a case clears
+            // pendingPrize in the parent callback and takes the card back to Chest.
             AnimatedVisibility(
-                visible = phase == CasePhase.Chest,
+                visible = phase != CasePhase.Opening,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically(),
             ) {
@@ -2882,6 +2884,7 @@ private fun SettingsScreen(
     onTourTargetBounds: (TutorialTarget, Rect) -> Unit,
 ) {
     var showApiDialog by remember { mutableStateOf(false) }
+    var showResetLockDialog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
     LaunchedEffect(tourActive) {
@@ -2911,9 +2914,9 @@ private fun SettingsScreen(
             SettingsRow(
                 title = "Strict mode",
                 subtitle = if (strictActive) {
-                    "Active lock: task edits, resets, and history clearing are frozen."
+                    "Active: task edits, resets, and history clearing are frozen."
                 } else {
-                    "During a lock, freeze rule changes and destructive settings."
+                    "When enabled, freeze rule changes and destructive settings."
                 },
                 trailing = {
                     Switch(checked = state.strictMode, onCheckedChange = onStrictMode)
@@ -3016,22 +3019,40 @@ private fun SettingsScreen(
             )
         }
         item {
+            val cageResetEnabled = !strictActive
             SettingsRow(
                 title = "Cage timer",
                 subtitle = "Reset the chastity lock countdown to unlocked.",
                 trailing = {
-                    OutlinedButton(onClick = onResetLock) {
+                    OutlinedButton(
+                        onClick = { if (cageResetEnabled) showResetLockDialog = true },
+                        enabled = cageResetEnabled,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Coral),
+                        border = BorderStroke(
+                            1.dp,
+                            Coral.copy(alpha = if (cageResetEnabled) 0.55f else 0.25f),
+                        ),
+                    ) {
                         Text("Reset")
                     }
                 },
             )
         }
         item {
+            val dailyResetEnabled = !strictActive
             SettingsRow(
                 title = "Daily reset",
                 subtitle = "Clear today's completed task checks now.",
                 trailing = {
-                    OutlinedButton(onClick = onResetDaily, enabled = !strictActive) {
+                    OutlinedButton(
+                        onClick = onResetDaily,
+                        enabled = dailyResetEnabled,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Coral),
+                        border = BorderStroke(
+                            1.dp,
+                            Coral.copy(alpha = if (dailyResetEnabled) 0.55f else 0.25f),
+                        ),
+                    ) {
                         Text("Reset")
                     }
                 },
@@ -3086,6 +3107,100 @@ private fun SettingsScreen(
             dismissButton = {
                 TextButton(onClick = { showApiDialog = false }) { Text("Cancel") }
             },
+        )
+    }
+
+    if (showResetLockDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetLockDialog = false },
+            title = { Text("Reset cage timer?") },
+            text = {
+                Text("This action cannot be undone, think wise before cheating Beta")
+            },
+            confirmButton = {
+                HoldToResetButton(
+                    onComplete = {
+                        if (!strictActive) onResetLock()
+                        showResetLockDialog = false
+                    },
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetLockDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun HoldToResetButton(onComplete: () -> Unit) {
+    var isHolding by remember { mutableStateOf(false) }
+    var progress by remember { mutableStateOf(0f) }
+    var completed by remember { mutableStateOf(false) }
+    val latestOnComplete by rememberUpdatedState(onComplete)
+
+    LaunchedEffect(isHolding) {
+        if (!isHolding || completed) {
+            if (!isHolding && !completed) progress = 0f
+            return@LaunchedEffect
+        }
+
+        val startedAt = SystemClock.elapsedRealtime()
+        while (isHolding && !completed) {
+            progress = (
+                (SystemClock.elapsedRealtime() - startedAt) / 4_000L.toFloat()
+            ).coerceIn(0f, 1f)
+            if (progress >= 1f) {
+                progress = 1f
+                completed = true
+                isHolding = false
+                return@LaunchedEffect
+            }
+            delay(16L)
+        }
+    }
+
+    LaunchedEffect(completed) {
+        if (!completed) return@LaunchedEffect
+        delay(450L)
+        latestOnComplete()
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clip(RoundedCornerShape(28.dp))
+            .background(CoralDim)
+            .pointerInput(completed) {
+                detectTapGestures(
+                    onPress = {
+                        if (!completed) {
+                            isHolding = true
+                            tryAwaitRelease()
+                            isHolding = false
+                        }
+                    },
+                )
+            },
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(progress)
+                .background(Coral),
+        )
+        Text(
+            text = when {
+                completed -> "Reset-ed"
+                progress > 0f -> "Keep holding..."
+                else -> "Hold to reset (4s)"
+            },
+            modifier = Modifier.align(Alignment.Center),
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
         )
     }
 }
