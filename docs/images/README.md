@@ -12,15 +12,15 @@ Just open it. Stay denied.
 ---
 
 <p align="center">
-  <img src="docs/images/Home.jpg" alt="Home — locked timer" width="220" />
+  <img src="Home.jpg" alt="Home — locked timer" width="220" />
   &nbsp;
-  <img src="docs/images/task.jpg" alt="Tasks — AI-validated missions" width="220" />
+  <img src="task.jpg" alt="Tasks — AI-validated missions" width="220" />
   &nbsp;
-  <img src="docs/images/gacha.jpg" alt="Gambling — Denial Case" width="220" />
+  <img src="gacha.jpg" alt="Gambling — Denial Case" width="220" />
 </p>
 
 <p align="center">
-  <img src="docs/images/widget.png" alt="Home screen widget" width="360" />
+  <img src="widget.png" alt="Home screen widget" width="360" />
 </p>
 
 ---
@@ -134,25 +134,25 @@ Home-screen widget tracks **hours denied** so you don’t forget what you are.
 
 Locked timer, proof toggle, tokens, daily progress.
 
-![Home screen](docs/images/Home.jpg)
+![Home screen](Home.jpg)
 
 ### Tasks
 
 Validate missions, earn BetaTokens, don’t farm nonsense.
 
-![Tasks screen](docs/images/task.jpg)
+![Tasks screen](task.jpg)
 
 ### Gambling — Denial Case
 
 Open cases. Cry about the odds.
 
-![Gambling — Case](docs/images/gacha.jpg)
+![Gambling — Case](gacha.jpg)
 
 ### Widget
 
 Hours denied, always visible.
 
-![Lock widget](docs/images/widget.png)
+![Lock widget](widget.png)
 
 ---
 
@@ -185,7 +185,7 @@ You need your **own free API key** from **Google AI Studio**. The app never ship
 
 ### Visual guide
 
-![How to create a free Gemini API key](docs/images/gemini_api_key_guide.jpg)
+![How to create a free Gemini API key](gemini_api_key_guide.jpg)
 
 ### Step-by-step
 
@@ -256,9 +256,9 @@ You need your **own free API key** from **Google AI Studio**. The app never ship
 
 ```bash
 # From repo root
-./gradlew :app:assembleRelease
+./gradlew :app:assembleDebug
 # or on Windows
-gradlew.bat :app:assembleRelease
+gradlew.bat :app:assembleDebug
 ```
 
 - Kotlin + Jetpack Compose  
